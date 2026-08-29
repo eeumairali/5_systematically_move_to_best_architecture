@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Re-Identification — from convolution to a cow ID database</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#EDF0EE;
+  --panel:#FFFFFF;
+  --ink:#14181C;
+  --muted:#5C6670;
+  --rule:#D0D6D1;
+  --anchor:#2E3440;
+  --pos:#0F8B6C;
+  --neg:#D33A5C;
+  --gate:#B87503;
+  --display:"Space Grotesk",system-ui,sans-serif;
+  --body:"Source Serif 4",Georgia,serif;
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--paper);color:var(--ink);
+  font-family:var(--body);font-size:17px;line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---------- layout ---------- */
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px;}
+.col{max-width:720px;}
+main{display:grid;grid-template-columns:200px minmax(0,1fr);gap:56px;align-items:start;}
+@media (max-width:900px){main{grid-template-columns:1fr;gap:0}.rail{display:none}}
+
+/* ---------- hero ---------- */
+.hero{background:var(--anchor);color:#EDF0EE;padding:64px 0 52px;border-bottom:3px solid var(--ink);}
+.eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.22em;text-transform:uppercase;color:#9AA7AE;margin:0 0 18px}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(34px,5.4vw,56px);line-height:1.02;letter-spacing:-.025em;margin:0 0 18px}
+h1 em{font-style:normal;color:#7FD8BE}
+.lede{font-size:19px;color:#C6CFD3;max-width:640px;margin:0}
+.hero .diagram{margin-top:40px}
+
+/* ---------- rail / toc ---------- */
+.rail{position:sticky;top:24px;padding-top:56px;}
+.toc{font-family:var(--mono);font-size:12px;line-height:1.5;list-style:none;margin:0;padding:0;border-left:1px solid var(--rule)}
+.toc li{margin:0}
+.toc a{display:block;padding:6px 12px;color:var(--muted);text-decoration:none;border-left:2px solid transparent;margin-left:-1px}
+.toc a:hover{color:var(--ink);border-left-color:var(--pos);background:rgba(255,255,255,.6)}
+.toc a.on{color:var(--ink);border-left-color:var(--ink);font-weight:700}
+.toc .n{color:#9AA7AE;margin-right:8px}
+
+/* ---------- sections ---------- */
+section{padding:56px 0;border-top:1px solid var(--rule)}
+section:first-of-type{border-top:0}
+.snum{font-family:var(--mono);font-size:12px;letter-spacing:.18em;color:var(--muted);display:block;margin-bottom:10px}
+h2{font-family:var(--display);font-weight:700;font-size:clamp(26px,3.4vw,34px);line-height:1.1;letter-spacing:-.02em;margin:0 0 8px}
+h3{font-family:var(--display);font-weight:500;font-size:19px;letter-spacing:-.01em;margin:34px 0 8px}
+h4{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:26px 0 6px}
+p{margin:0 0 14px}
+.sub{color:var(--muted);font-size:18px;margin-bottom:22px}
+ul,ol{margin:0 0 16px;padding-left:22px}
+li{margin:5px 0}
+strong{font-weight:600}
+code{font-family:var(--mono);font-size:.86em;background:#fff;border:1px solid var(--rule);border-radius:3px;padding:1px 5px}
+a{color:var(--ink)}
+
+/* ---------- components ---------- */
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:20px 22px;margin:20px 0}
+.card h4{margin-top:0}
+.key{border-left:3px solid var(--pos);background:#fff;padding:14px 18px;margin:20px 0;border-radius:0 5px 5px 0}
+.key b{font-family:var(--display);display:block;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--pos);margin-bottom:4px}
+.warn{border-left:3px solid var(--neg)}
+.warn b{color:var(--neg)}
+.why{border-left:3px solid var(--gate)}
+.why b{color:var(--gate)}
+.math{font-family:var(--mono);font-size:14px;background:#fff;border:1px solid var(--rule);border-radius:5px;padding:14px 16px;margin:16px 0;overflow-x:auto;line-height:1.7}
+.math .cm{color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:14.5px;margin:18px 0;background:#fff;border:1px solid var(--rule)}
+th{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;text-align:left;color:var(--muted);padding:10px 12px;border-bottom:1px solid var(--rule);font-weight:400}
+td{padding:9px 12px;border-bottom:1px solid #EDF0EE;vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.mono,th.mono{font-family:var(--mono);font-size:13px}
+figure{margin:24px 0}
+figcaption{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.5}
+.diagram{background:#fff;border:1px solid var(--rule);border-radius:6px;padding:18px}
+.hero .diagram{background:#20262E;border-color:#39424C}
+svg{display:block;width:100%;height:auto;overflow:visible}
+.sv-label{font-family:"JetBrains Mono",monospace;font-size:10px;fill:#5C6670}
+.sv-title{font-family:"Space Grotesk",sans-serif;font-size:12px;font-weight:500;fill:#14181C}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:640px){.grid2{grid-template-columns:1fr}}
+
+/* interactive */
+.lab{background:#fff;border:1px solid var(--rule);border-radius:6px;overflow:hidden;margin:24px 0}
+.lab-head{background:var(--anchor);color:#EDF0EE;padding:10px 16px;font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase}
+.lab-body{padding:18px}
+.ctl{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-top:14px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+.ctl label{display:flex;align-items:center;gap:8px}
+input[type=range]{accent-color:var(--pos);width:120px}
+button{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;background:var(--ink);color:#fff;border:0;border-radius:4px;padding:8px 14px;cursor:pointer}
+button:hover{background:var(--pos)}
+button.ghost{background:#fff;color:var(--ink);border:1px solid var(--rule)}
+button.ghost:hover{border-color:var(--ink);background:#fff}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(--gate);outline-offset:2px}
+.readout{font-family:var(--mono);font-size:12.5px;display:flex;flex-wrap:wrap;gap:18px;margin-top:14px;padding-top:12px;border-top:1px solid var(--rule)}
+.readout b{font-weight:700;font-size:15px;display:block}
+canvas{display:block;width:100%;background:#FBFCFB;border:1px solid var(--rule);border-radius:4px}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle}
+
+footer{background:var(--anchor);color:#9AA7AE;font-family:var(--mono);font-size:11.5px;padding:32px 0;margin-top:40px;line-height:1.7}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow">Study guide · animal re-identification · v1</p>
+    <h1>Classification asks <em>what</em>.<br>Re-ID asks <em>which one</em>.</h1>
+    <p class="lede">A classifier picks a label from a fixed list it was trained on. A re-ID model never predicts your cows at all — it learns a ruler for measuring sameness, and the identities live in a database you can edit at 3am without retraining anything.</p>
+
+    <figure class="diagram">
+      <svg viewBox="0 0 900 190" role="img" aria-label="Two images pass through the same network, become vectors, and are compared by distance">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#8A97A0"/></marker>
+        </defs>
+        <g class="a">
+          <rect x="10" y="20" width="70" height="60" rx="4" fill="#39424C" stroke="#5C6670"/>
+          <text x="45" y="55" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#C6CFD3">img A</text>
+          <rect x="10" y="108" width="70" height="60" rx="4" fill="#39424C" stroke="#5C6670"/>
+          <text x="45" y="143" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#C6CFD3">img B</text>
+
+          <line x1="86" y1="50" x2="160" y2="82" stroke="#8A97A0" marker-end="url(#ar)"/>
+          <line x1="86" y1="138" x2="160" y2="106" stroke="#8A97A0" marker-end="url(#ar)"/>
+
+          <rect x="170" y="58" width="150" height="72" rx="4" fill="#2E3440" stroke="#7FD8BE" stroke-width="1.5"/>
+          <text x="245" y="88" text-anchor="middle" font-family="Space Grotesk" font-size="13" fill="#7FD8BE">ONE network</text>
+          <text x="245" y="106" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#9AA7AE">shared weights</text>
+
+          <line x1="326" y1="82" x2="392" y2="50" stroke="#8A97A0" marker-end="url(#ar)"/>
+          <line x1="326" y1="106" x2="392" y2="138" stroke="#8A97A0" marker-end="url(#ar)"/>
+
+          <g font-family="JetBrains Mono" font-size="10" fill="#C6CFD3">
+            <rect x="400" y="30" width="150" height="40" rx="4" fill="#39424C" stroke="#5C6670"/>
+            <text x="475" y="55" text-anchor="middle">v_A = [0.12, −0.4, …]</text>
+            <rect x="400" y="118" width="150" height="40" rx="4" fill="#39424C" stroke="#5C6670"/>
+            <text x="475" y="143" text-anchor="middle">v_B = [0.09, −0.5, …]</text>
+          </g>
+          <text x="475" y="22" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="#8A97A0">512-d EMBEDDING</text>
+
+          <line x1="556" y1="50" x2="612" y2="82" stroke="#8A97A0" marker-end="url(#ar)"/>
+          <line x1="556" y1="138" x2="612" y2="106" stroke="#8A97A0" marker-end="url(#ar)"/>
+
+          <rect x="620" y="62" width="120" height="64" rx="4" fill="#20262E" stroke="#8A97A0"/>
+          <text x="680" y="88" text-anchor="middle" font-family="Space Grotesk" font-size="13" fill="#EDF0EE">distance</text>
+          <text x="680" y="107" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#9AA7AE">d(v_A, v_B)</text>
+
+          <line x1="746" y1="94" x2="798" y2="94" stroke="#8A97A0" marker-end="url(#ar)"/>
+          <text x="806" y="82" font-family="JetBrains Mono" font-size="11" fill="#7FD8BE">d &lt; τ → same</text>
+          <text x="806" y="106" font-family="JetBrains Mono" font-size="11" fill="#E8798F">d ≥ τ → different</text>
+        </g>
+      </svg>
+      <figcaption style="color:#8A97A0">The whole field in one picture. Everything below is detail on how to make that distance meaningful.</figcaption>
+    </figure>
+  </div>
+</header>
+
+<div class="wrap">
+<main>
+  <nav class="rail" aria-label="Contents">
+    <ul class="toc">
+      <li><a href="#s1"><span class="n">01</span>CNN fundamentals</a></li>
+      <li><a href="#s2"><span class="n">02</span>ResNet-50</a></li>
+      <li><a href="#s3"><span class="n">03</span>Embeddings</a></li>
+      <li><a href="#s4"><span class="n">04</span>Metric learning</a></li>
+      <li><a href="#s5"><span class="n">05</span>OSNet</a></li>
+      <li><a href="#s6"><span class="n">06</span>Re-ID training</a></li>
+      <li><a href="#s7"><span class="n">07</span>Inference</a></li>
+      <li><a href="#s8"><span class="n">08</span>Open-set</a></li>
+      <li><a href="#s9"><span class="n">09</span>Scale &amp; FAISS</a></li>
+      <li><a href="#s10"><span class="n">10</span>Cow project</a></li>
+      <li><a href="#gl"><span class="n">—</span>Glossary</a></li>
+    </ul>
+  </nav>
+
+  <div class="col">
+
+<section id="s1">
+<span class="snum">01 / FOUNDATION</span>
+<h2>CNN fundamentals</h2>
+<p class="sub">You know these. Here they are again, but read them asking one question: <em>how does this turn a picture into a vector?</em></p>
+
+<h3>Convolution &amp; feature maps</h3>
+<p>A conv layer is a small stack of learnable filters slid across the image. Each filter answers one question at every position — "is there a vertical edge here?" — and writes the answer into a <strong>feature map</strong>. A layer with 64 filters produces 64 feature maps: 64 different questions asked about every location.</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 700 200" role="img" aria-label="A 3x3 kernel slides over an input grid producing one output value per position">
+  <text class="sv-title" x="0" y="14">input H×W×C_in</text>
+  <g id="kgrid">
+    <rect x="0" y="26" width="150" height="150" fill="#F4F6F4" stroke="#D0D6D1"/>
+    <g stroke="#E3E7E3">
+      <line x1="30" y1="26" x2="30" y2="176"/><line x1="60" y1="26" x2="60" y2="176"/><line x1="90" y1="26" x2="90" y2="176"/><line x1="120" y1="26" x2="120" y2="176"/>
+      <line x1="0" y1="56" x2="150" y2="56"/><line x1="0" y1="86" x2="150" y2="86"/><line x1="0" y1="116" x2="150" y2="116"/><line x1="0" y1="146" x2="150" y2="146"/>
+    </g>
+    <rect x="0" y="26" width="90" height="90" fill="rgba(15,139,108,.16)" stroke="#0F8B6C" stroke-width="2">
+      <animate attributeName="x" values="0;30;60;0;30;60;0;30;60;0" dur="6s" repeatCount="indefinite" calcMode="discrete"/>
+      <animate attributeName="y" values="26;26;26;56;56;56;86;86;86;26" dur="6s" repeatCount="indefinite" calcMode="discrete"/>
+    </rect>
+  </g>
+  <text class="sv-label" x="0" y="192">3×3 receptive field, stride 1</text>
+
+  <path d="M165 100 L215 100" stroke="#8A97A0" stroke-width="1.5" marker-end="url(#ar2)"/>
+  <defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#8A97A0"/></marker></defs>
+  <text class="sv-label" x="168" y="92">∑ w·x + b</text>
+  <text class="sv-label" x="172" y="118">then ReLU</text>
+
+  <text class="sv-title" x="230" y="14">output feature map</text>
+  <rect x="230" y="26" width="90" height="90" fill="#FFF" stroke="#D0D6D1"/>
+  <g stroke="#E3E7E3">
+    <line x1="260" y1="26" x2="260" y2="116"/><line x1="290" y1="26" x2="290" y2="116"/>
+    <line x1="230" y1="56" x2="320" y2="56"/><line x1="230" y1="86" x2="320" y2="86"/>
+  </g>
+  <rect x="230" y="26" width="30" height="30" fill="#0F8B6C">
+    <animate attributeName="x" values="230;260;290;230;260;290;230;260;290;230" dur="6s" repeatCount="indefinite" calcMode="discrete"/>
+    <animate attributeName="y" values="26;26;26;56;56;56;86;86;86;26" dur="6s" repeatCount="indefinite" calcMode="discrete"/>
+  </rect>
+  <text class="sv-label" x="230" y="134">one filter → one map</text>
+
+  <text class="sv-title" x="400" y="14">what depth buys you</text>
+  <g font-family="JetBrains Mono" font-size="10.5" fill="#14181C">
+    <rect x="400" y="26" width="290" height="30" fill="#FBFCFB" stroke="#D0D6D1"/><text x="410" y="45">layer 1–2 · edges, colour blobs · RF ≈ 7px</text>
+    <rect x="400" y="60" width="290" height="30" fill="#FBFCFB" stroke="#D0D6D1"/><text x="410" y="79">layer 10 · texture, stripe/patch motifs · RF ≈ 60px</text>
+    <rect x="400" y="94" width="290" height="30" fill="#FBFCFB" stroke="#D0D6D1"/><text x="410" y="113">layer 30 · body parts, coat pattern layout</text>
+    <rect x="400" y="128" width="290" height="30" fill="#2E3440" stroke="#2E3440"/><text x="410" y="147" fill="#7FD8BE">layer 49 · "this individual" · RF ≥ whole image</text>
+  </g>
+  <text class="sv-label" x="400" y="176">RF = receptive field: how much of the original image one neuron sees.</text>
+</svg>
+<figcaption>Stacking convs grows the receptive field. Identity is a whole-animal property, so the useful re-ID signal lives in the late layers — which is exactly why we cut the network there.</figcaption>
+</figure>
+
+<div class="math">
+out_size = floor((in + 2·pad − kernel) / stride) + 1
+params   = kernel_h · kernel_w · C_in · C_out + C_out      <span class="cm">// weights + bias</span>
+FLOPs    ≈ out_h · out_w · kernel_h · kernel_w · C_in · C_out
+</div>
+
+<h3>Pooling</h3>
+<p>Downsampling. Max-pool takes the strongest response in each window; it throws away <em>where exactly</em> a feature was and keeps <em>that it was there</em>. That small blindness is a feature: an animal shifted 4 pixels right should not produce a different vector.</p>
+
+<div class="key why"><b>Why you should care for re-ID</b>Pooling too aggressively destroys fine spatial detail — and fine detail (a specific ear notch, one stripe fork) is often the only thing separating two individuals. This is why re-ID backbones commonly set the <strong>last stride to 1</strong>, keeping a 16×8 feature map instead of 8×4. Small change, consistently ~1–2% rank-1.</div>
+
+<h3>Residual connections</h3>
+<p>A plain 50-layer stack trains worse than a 20-layer one — not from overfitting, but because gradients degrade and the optimiser cannot even find the identity mapping. The fix is to make identity the default:</p>
+<div class="math">y = F(x, W) + x        <span class="cm">// the block learns the *change*, not the whole function</span>
+∂y/∂x = ∂F/∂x + 1      <span class="cm">// gradient always has a clean path home (the "+1")</span></div>
+
+<figure class="diagram">
+<svg viewBox="0 0 660 150" role="img" aria-label="Plain block versus residual bottleneck block">
+  <text class="sv-title" x="0" y="14">plain block</text>
+  <rect x="0" y="52" width="70" height="30" rx="3" fill="#fff" stroke="#D0D6D1"/><text class="sv-label" x="18" y="71">3×3 conv</text>
+  <rect x="86" y="52" width="70" height="30" rx="3" fill="#fff" stroke="#D0D6D1"/><text class="sv-label" x="104" y="71">3×3 conv</text>
+  <line x1="72" y1="67" x2="84" y2="67" stroke="#8A97A0"/><line x1="158" y1="67" x2="176" y2="67" stroke="#8A97A0" marker-end="url(#ar2)"/>
+  <text class="sv-label" x="0" y="112">gradient must survive every layer</text>
+
+  <text class="sv-title" x="250" y="14">residual bottleneck (ResNet-50)</text>
+  <rect x="250" y="52" width="62" height="30" rx="3" fill="#fff" stroke="#D0D6D1"/><text class="sv-label" x="262" y="71">1×1 ↓C</text>
+  <rect x="322" y="52" width="62" height="30" rx="3" fill="#fff" stroke="#D0D6D1"/><text class="sv-label" x="337" y="71">3×3</text>
+  <rect x="394" y="52" width="62" height="30" rx="3" fill="#fff" stroke="#D0D6D1"/><text class="sv-label" x="406" y="71">1×1 ↑C</text>
+  <circle cx="486" cy="67" r="13" fill="#fff" stroke="#0F8B6C" stroke-width="2"/><text x="486" y="72" text-anchor="middle" font-size="14" fill="#0F8B6C">+</text>
+  <line x1="314" y1="67" x2="320" y2="67" stroke="#8A97A0"/><line x1="386" y1="67" x2="392" y2="67" stroke="#8A97A0"/><line x1="458" y1="67" x2="470" y2="67" stroke="#8A97A0"/>
+  <path d="M240 67 L240 28 L486 28 L486 52" fill="none" stroke="#0F8B6C" stroke-width="2" stroke-dasharray="4 3"/>
+  <text class="sv-label" x="330" y="22" fill="#0F8B6C">identity shortcut</text>
+  <line x1="500" y1="67" x2="520" y2="67" stroke="#8A97A0" marker-end="url(#ar2)"/>
+  <text class="sv-label" x="250" y="112">1×1 squeezes channels so the 3×3 is cheap, then restores them.</text>
+  <text class="sv-label" x="250" y="128">256 → 64 → 64 → 256. That's the "bottleneck".</text>
+</svg>
+</figure>
+
+<h3>Global Average Pooling — the step that makes re-ID possible</h3>
+<p>This is the hinge of the whole document. After the last conv stage you hold a tensor of shape <code>C×H×W</code> — for ResNet-50 at 224×224 input, that's <code>2048×7×7</code>. GAP averages each channel over all spatial positions:</p>
+<div class="math">v[c] = (1 / (H·W)) · Σ_h Σ_w  F[c, h, w]        <span class="cm">// 2048×7×7 → 2048×1×1 → a 2048-d vector</span></div>
+<p>Three consequences worth memorising: input size no longer has to be fixed; there are zero parameters so nothing can overfit here; and — the important one — <strong>you now have a single vector describing the image, and vectors can be compared to each other.</strong> A classifier throws this vector into a final linear layer and forgets it. Re-ID keeps the vector and throws away the linear layer.</p>
+</section>
+
+<section id="s2">
+<span class="snum">02 / BACKBONE</span>
+<h2>ResNet-50: backbone vs head</h2>
+<p class="sub">One network, two halves, and only one of them survives into deployment.</p>
+
+<table>
+<thead><tr><th>Stage</th><th class="mono">Output (224 in)</th><th>Contents</th><th class="mono">Channels</th></tr></thead>
+<tbody>
+<tr><td>conv1</td><td class="mono">112×112</td><td>7×7 conv, stride 2</td><td class="mono">64</td></tr>
+<tr><td>pool</td><td class="mono">56×56</td><td>3×3 max-pool, stride 2</td><td class="mono">64</td></tr>
+<tr><td>conv2_x</td><td class="mono">56×56</td><td>3 × bottleneck</td><td class="mono">256</td></tr>
+<tr><td>conv3_x</td><td class="mono">28×28</td><td>4 × bottleneck</td><td class="mono">512</td></tr>
+<tr><td>conv4_x</td><td class="mono">14×14</td><td>6 × bottleneck</td><td class="mono">1024</td></tr>
+<tr><td>conv5_x</td><td class="mono">7×7</td><td>3 × bottleneck</td><td class="mono">2048</td></tr>
+<tr><td>GAP</td><td class="mono">1×1</td><td>average over 7×7</td><td class="mono">2048</td></tr>
+<tr><td><em>fc (head)</em></td><td class="mono">—</td><td><em>linear → softmax</em></td><td class="mono"><em>1000</em></td></tr>
+</tbody>
+</table>
+
+<figure class="diagram">
+<svg viewBox="0 0 700 210" role="img" aria-label="ResNet-50 split into backbone and head, with the head discarded at inference">
+  <rect x="0" y="40" width="420" height="76" rx="5" fill="#F4F6F4" stroke="#0F8B6C" stroke-width="1.5"/>
+  <text class="sv-title" x="12" y="34" fill="#0F8B6C">BACKBONE — kept forever</text>
+  <g font-family="JetBrains Mono" font-size="9.5" fill="#14181C" text-anchor="middle">
+    <rect x="12" y="58" width="52" height="40" rx="3" fill="#fff" stroke="#D0D6D1"/><text x="38" y="76">conv1</text><text x="38" y="90" fill="#5C6670">112²</text>
+    <rect x="76" y="58" width="70" height="40" rx="3" fill="#fff" stroke="#D0D6D1"/><text x="111" y="76">conv2_x</text><text x="111" y="90" fill="#5C6670">56²·256</text>
+    <rect x="158" y="58" width="70" height="40" rx="3" fill="#fff" stroke="#D0D6D1"/><text x="193" y="76">conv3_x</text><text x="193" y="90" fill="#5C6670">28²·512</text>
+    <rect x="240" y="58" width="70" height="40" rx="3" fill="#fff" stroke="#D0D6D1"/><text x="275" y="76">conv4_x</text><text x="275" y="90" fill="#5C6670">14²·1024</text>
+    <rect x="322" y="58" width="86" height="40" rx="3" fill="#2E3440" stroke="#2E3440"/><text x="365" y="76" fill="#7FD8BE">conv5_x</text><text x="365" y="90" fill="#9AA7AE">7²·2048</text>
+  </g>
+  <line x1="414" y1="78" x2="438" y2="78" stroke="#8A97A0" marker-end="url(#ar2)"/>
+  <rect x="444" y="58" width="56" height="40" rx="3" fill="#fff" stroke="#0F8B6C" stroke-width="1.5"/><text x="472" y="82" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#0F8B6C">GAP</text>
+  <line x1="502" y1="78" x2="524" y2="78" stroke="#8A97A0" marker-end="url(#ar2)"/>
+  <rect x="530" y="52" width="120" height="52" rx="3" fill="#fff" stroke="#0F8B6C" stroke-width="2"/>
+  <text x="590" y="74" text-anchor="middle" font-family="Space Grotesk" font-size="12" fill="#0F8B6C">2048-d vector</text>
+  <text x="590" y="92" text-anchor="middle" class="sv-label">this is the deliverable</text>
+
+  <path d="M590 108 L590 140" stroke="#D33A5C" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arR)"/>
+  <defs><marker id="arR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#D33A5C"/></marker></defs>
+  <rect x="500" y="144" width="180" height="46" rx="5" fill="#FDF2F4" stroke="#D33A5C" stroke-dasharray="5 4"/>
+  <text x="590" y="164" text-anchor="middle" font-family="Space Grotesk" font-size="12" fill="#D33A5C">HEAD — fc(2048→N_ids)</text>
+  <text x="590" y="180" text-anchor="middle" class="sv-label" fill="#D33A5C">deleted after training</text>
+  <text x="0" y="164" class="sv-label">The head exists only to give the backbone a gradient signal during</text>
+  <text x="0" y="180" class="sv-label">training. Its output size = number of training identities, which is</text>
+  <text x="0" y="196" class="sv-label">exactly why it can't generalise to a new cow.</text>
+</svg>
+</figure>
+
+<div class="key"><b>The one-sentence version</b>Backbone = image → vector. Head = vector → label. Re-ID keeps the backbone and deletes the head, because labels are a closed set and vectors aren't.</div>
+
+<h4>Re-ID modifications to stock ResNet-50</h4>
+<ul>
+<li><strong>Input shape</strong> — people use 256×128 (2:1, body-shaped). Cattle side-view crops are wider; 256×256 or 224×224 is the sane starting point. Pick one and never change it again, or your results table becomes meaningless.</li>
+<li><strong>Last stride = 1</strong> in conv5_x → feature map 16×16 instead of 8×8. More spatial evidence into the GAP.</li>
+<li><strong>Embedding neck</strong> — optionally <code>fc(2048→512)</code> to shrink the vector. Cheaper storage, faster search, slight accuracy cost.</li>
+<li><strong>ImageNet init</strong> — always. Random init on a small animal dataset is a wasted week.</li>
+</ul>
+</section>
+
+<section id="s3">
+<span class="snum">03 / THE OBJECT</span>
+<h2>Embeddings</h2>
+<p class="sub">A list of numbers whose <em>only</em> job is that geometry means something.</p>
+
+<p>An embedding is the GAP output (optionally projected down): a point in a 512- or 2048-dimensional space. On its own it is meaningless — 512 arbitrary floats. It becomes an embedding when the training procedure has enforced one property:</p>
+
+<div class="math">‖ f(x_i) − f(x_j) ‖  is <b>small</b> when i and j are the same individual
+‖ f(x_i) − f(x_j) ‖  is <b>large</b> when they are not
+<span class="cm">…and that's the whole contract. Nothing else is promised.</span></div>
+
+<h3>Feature space, drawn honestly</h3>
+<p>You cannot see 512 dimensions, so every diagram (including mine) cheats by showing 2. Keep the cheat in mind: in high dimensions there is far more room, distances concentrate, and clusters can be separated in ways that look impossible on paper.</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 660 230" role="img" aria-label="Untrained versus trained embedding space">
+  <text class="sv-title" x="0" y="14">before training — ImageNet features</text>
+  <rect x="0" y="24" width="290" height="170" fill="#FBFCFB" stroke="#D0D6D1"/>
+  <g>
+    <circle cx="60" cy="70" r="5" fill="#0F8B6C"/><circle cx="150" cy="60" r="5" fill="#D33A5C"/><circle cx="90" cy="130" r="5" fill="#B87503"/>
+    <circle cx="200" cy="100" r="5" fill="#0F8B6C"/><circle cx="110" cy="90" r="5" fill="#D33A5C"/><circle cx="230" cy="150" r="5" fill="#B87503"/>
+    <circle cx="170" cy="160" r="5" fill="#0F8B6C"/><circle cx="250" cy="55" r="5" fill="#D33A5C"/><circle cx="45" cy="165" r="5" fill="#B87503"/>
+    <circle cx="130" cy="40" r="5" fill="#0F8B6C"/><circle cx="60" cy="110" r="5" fill="#D33A5C"/><circle cx="205" cy="45" r="5" fill="#B87503"/>
+  </g>
+  <text class="sv-label" x="0" y="212">"cow-ness" is encoded. "which cow" is not.</text>
+
+  <text class="sv-title" x="370" y="14">after metric learning</text>
+  <rect x="370" y="24" width="290" height="170" fill="#FBFCFB" stroke="#D0D6D1"/>
+  <circle cx="440" cy="70" r="38" fill="rgba(15,139,108,.09)" stroke="#0F8B6C" stroke-dasharray="3 3"/>
+  <circle cx="590" cy="72" r="34" fill="rgba(211,58,92,.08)" stroke="#D33A5C" stroke-dasharray="3 3"/>
+  <circle cx="510" cy="155" r="36" fill="rgba(184,117,3,.09)" stroke="#B87503" stroke-dasharray="3 3"/>
+  <g>
+    <circle cx="428" cy="60" r="5" fill="#0F8B6C"/><circle cx="452" cy="66" r="5" fill="#0F8B6C"/><circle cx="437" cy="86" r="5" fill="#0F8B6C"/><circle cx="455" cy="88" r="5" fill="#0F8B6C"/>
+    <circle cx="582" cy="62" r="5" fill="#D33A5C"/><circle cx="600" cy="70" r="5" fill="#D33A5C"/><circle cx="588" cy="86" r="5" fill="#D33A5C"/><circle cx="604" cy="52" r="5" fill="#D33A5C"/>
+    <circle cx="500" cy="145" r="5" fill="#B87503"/><circle cx="520" cy="152" r="5" fill="#B87503"/><circle cx="508" cy="168" r="5" fill="#B87503"/><circle cx="527" cy="136" r="5" fill="#B87503"/>
+  </g>
+  <line x1="428" y1="60" x2="455" y2="88" stroke="#0F8B6C" stroke-width="1.5"/>
+  <text class="sv-label" x="452" y="112" fill="#0F8B6C">intra-class: small</text>
+  <line x1="466" y1="76" x2="556" y2="74" stroke="#5C6670" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text class="sv-label" x="470" y="36">inter-class: large</text>
+  <text class="sv-label" x="370" y="212">Same "cow-ness", but now organised by identity.</text>
+</svg>
+<figcaption>Metric learning does not add information to the image. It reorganises which differences the network is allowed to care about.</figcaption>
+</figure>
+
+<h3>Choosing the embedding dimension</h3>
+<table>
+<thead><tr><th class="mono">dim</th><th>Behaviour</th><th>Use when</th></tr></thead>
+<tbody>
+<tr><td class="mono">128</td><td>Fast, tiny index, underfits with many identities</td><td>&lt; 200 individuals, edge device</td></tr>
+<tr><td class="mono">256–512</td><td>The sweet spot in nearly every published re-ID paper</td><td><strong>Start here</strong></td></tr>
+<tr><td class="mono">2048</td><td>Raw ResNet GAP output, 4× storage, marginal gain</td><td>You have not yet added a neck</td></tr>
+</tbody>
+</table>
+<p>Storage arithmetic for your ablation table: 10,000 embeddings × 512 dims × 4 bytes (fp32) = 20 MB. Nothing. 10 million × 2048 = 80 GB. Something. Dimension is a deployment decision as much as an accuracy one.</p>
+
+<div class="key"><b>Always L2-normalise</b>Divide each vector by its norm so every embedding sits on the unit hypersphere. This makes Euclidean distance and cosine similarity monotonically equivalent (<code>d² = 2 − 2·cos</code>), makes one global threshold meaningful across the whole gallery, and stops the network from cheating by inflating vector magnitude instead of improving direction.</div>
+</section>
+
+<section id="s4">
+<span class="snum">04 / THE ENGINE</span>
+<h2>Metric learning</h2>
+<p class="sub">The loss function is the whole idea. Everything else is plumbing.</p>
+
+<h3>Contrastive loss — pairs</h3>
+<div class="math">L = y · d²  +  (1 − y) · max(0, m − d)²
+<span class="cm">y = 1 same individual, y = 0 different, d = ‖f(x₁) − f(x₂)‖, m = margin</span></div>
+<p>Same pair: pull together, with no floor — it wants <code>d → 0</code> absolutely. Different pair: push apart until <code>d ≥ m</code>, then stop. That asymmetry is the flaw. Forcing every positive pair to collapse to a single point is a harsher demand than the task requires, and the margin <code>m</code> is a global constant applied to identities that legitimately differ in how tight they should be.</p>
+
+<h3>Triplet loss ⭐ — relative, not absolute</h3>
+<p>Three images per comparison: an <strong>anchor</strong>, a <strong>positive</strong> (same individual), a <strong>negative</strong> (different individual). It never asks for an absolute distance. It only asks that the positive be closer than the negative, by at least a margin.</p>
+
+<div class="math">L = max( 0,  d(a,p) − d(a,n) + margin )
+<span class="cm">satisfied → loss 0 → zero gradient → that triplet teaches nothing</span></div>
+
+<figure class="diagram">
+<svg viewBox="0 0 660 200" role="img" aria-label="Triplet loss before and after: anchor, positive pulled in, negative pushed out">
+  <text class="sv-title" x="20" y="16">before</text>
+  <circle cx="150" cy="105" r="60" fill="none" stroke="#D0D6D1" stroke-dasharray="3 4"/>
+  <circle cx="150" cy="105" r="10" fill="#2E3440"/><text class="sv-label" x="140" y="132" fill="#2E3440">anchor</text>
+  <circle cx="232" cy="52" r="8" fill="#0F8B6C"/><text class="sv-label" x="246" y="52" fill="#0F8B6C">positive</text>
+  <circle cx="96" cy="60" r="8" fill="#D33A5C"/><text class="sv-label" x="30" y="52" fill="#D33A5C">negative</text>
+  <line x1="150" y1="105" x2="232" y2="52" stroke="#0F8B6C" stroke-width="1.5"/>
+  <line x1="150" y1="105" x2="96" y2="60" stroke="#D33A5C" stroke-width="1.5"/>
+  <text class="sv-label" x="20" y="180">d(a,p) &gt; d(a,n) → loss is large, gradients flow</text>
+
+  <path d="M300 100 L340 100" stroke="#8A97A0" stroke-width="1.5" marker-end="url(#ar2)"/>
+  <text class="sv-label" x="296" y="92">train</text>
+
+  <text class="sv-title" x="370" y="16">after</text>
+  <circle cx="500" cy="105" r="60" fill="none" stroke="#D0D6D1" stroke-dasharray="3 4"/>
+  <circle cx="500" cy="105" r="10" fill="#2E3440"/>
+  <circle cx="528" cy="88" r="8" fill="#0F8B6C"/>
+  <circle cx="608" cy="42" r="8" fill="#D33A5C"/>
+  <line x1="500" y1="105" x2="528" y2="88" stroke="#0F8B6C" stroke-width="1.5"/>
+  <line x1="500" y1="105" x2="608" y2="42" stroke="#D33A5C" stroke-width="1.5"/>
+  <path d="M528 88 L560 68" stroke="#B87503" stroke-width="1" stroke-dasharray="2 2"/>
+  <text class="sv-label" x="540" y="130" fill="#B87503">margin gap</text>
+  <text class="sv-label" x="370" y="180">d(a,p) + margin &lt; d(a,n) → loss 0 → this triplet is done</text>
+</svg>
+</figure>
+
+<div class="key why"><b>Why triplet beats contrastive — and why it matters to you</b>Relative ordering is what retrieval actually needs: at query time you rank the gallery, you never check an absolute distance. Schneider et al. tested exactly this across five species — humans, chimps, humpback whales, fruit flies, and <strong>ATRW tigers</strong> — and triplet loss beat contrastive loss for <em>every architecture on every dataset</em>. On ATRW, ResNet-152 went from 0.877 to 0.996 mAP@5. That result is in your project folder; it is the single strongest empirical reason to skip contrastive loss entirely.</div>
+
+<h3>The batch-hard problem</h3>
+<p>Random triplets die fast. After a couple of epochs most randomly sampled triplets already satisfy the margin, so their loss is exactly 0 and they contribute nothing — you burn GPU time computing gradients that are zero. The fix is <strong>batch-hard mining</strong>:</p>
+<div class="math"><b>PK sampling</b> — build each batch as P identities × K images. Typical: P=16, K=4 → batch 64.
+For every image in the batch, used as anchor:
+  positive = the <b>hardest</b> (furthest) same-ID image in the batch
+  negative = the <b>hardest</b> (nearest) different-ID image in the batch
+L_BH = (1/PK) Σ_a max(0, max_p d(a,p) − min_n d(a,n) + margin)</div>
+<p>Every anchor now contributes a genuinely difficult triplet. Note it only mines <em>within the batch</em> — so batch composition is a hyperparameter, not an implementation detail.</p>
+
+<div class="key warn"><b>Failure mode: collapse</b>If margin is too large or the learning rate too high, the cheapest way to satisfy the loss is to map every image to the same point. Loss goes to a constant, distances go to zero, accuracy is chance. Watch mean <code>d(a,p)</code> and mean <code>d(a,n)</code> as separate logged metrics — if both trend to 0, you have collapsed. Soft-margin <code>L = log(1 + exp(d_ap − d_an))</code> is the usual escape hatch.</div>
+
+<h3>Live: watch triplet loss reshape a space</h3>
+<p>Three identities, 2-D embeddings, gradient descent directly on the point coordinates. Run it, then switch mining to Random and watch the "active triplets" count collapse while the clusters stop improving.</p>
+
+<div class="lab">
+<div class="lab-head">Lab 01 · triplet loss simulator</div>
+<div class="lab-body">
+<canvas id="cv" height="330" aria-label="Interactive embedding space simulation"></canvas>
+<div class="ctl">
+  <button id="run">Run</button>
+  <button id="step" class="ghost">Step ×20</button>
+  <button id="reset" class="ghost">Reset</button>
+  <label>margin <input type="range" id="mrg" min="0.05" max="1.2" step="0.05" value="0.4"><span id="mrgv">0.40</span></label>
+  <label>lr <input type="range" id="lr" min="0.005" max="0.2" step="0.005" value="0.05"><span id="lrv">0.050</span></label>
+  <label>mining
+    <select id="mine" style="font-family:var(--mono);font-size:11px;padding:4px">
+      <option value="hard">batch-hard</option><option value="rand">random</option>
+    </select>
+  </label>
+</div>
+<div class="readout">
+  <div>loss<b id="rl">—</b></div>
+  <div>active triplets<b id="ra">—</b></div>
+  <div>mean d(a,p)<b id="rp" style="color:#0F8B6C">—</b></div>
+  <div>mean d(a,n)<b id="rn" style="color:#D33A5C">—</b></div>
+  <div>step<b id="rs">0</b></div>
+</div>
+</div>
+</div>
+
+<h3>Cosine vs Euclidean</h3>
+<table>
+<thead><tr><th></th><th>Euclidean</th><th>Cosine</th></tr></thead>
+<tbody>
+<tr><td class="mono">formula</td><td class="mono">√Σ(aᵢ−bᵢ)²</td><td class="mono">a·b / (‖a‖‖b‖)</td></tr>
+<tr><td class="mono">range</td><td class="mono">[0, ∞) — lower = similar</td><td class="mono">[−1, 1] — higher = similar</td></tr>
+<tr><td class="mono">sensitive to</td><td>direction <em>and</em> magnitude</td><td>direction only</td></tr>
+<tr><td class="mono">threshold</td><td>dataset-dependent, awkward</td><td>interpretable, portable</td></tr>
+</tbody>
+</table>
+<p>If you L2-normalise (and you should), the choice stops mattering mathematically: <code>d² = 2 − 2·cos(θ)</code>, so ranking by one is identical to ranking by the other. Use cosine anyway, because <code>0.82</code> is a number you can reason about and <code>0.6</code> Euclidean units is not.</p>
+
+<h3>The similarity threshold τ</h3>
+<p>Training gives you a ruler. τ is where you decide to cut it. It is <em>not</em> learned, it is chosen on a validation set after training, and it encodes a business decision: is it worse to merge two cows into one record, or to invent a new record for a cow you already have? Full treatment in §08 with an interactive explorer.</p>
+</section>
+
+<section id="s5">
+<span class="snum">05 / ARCHITECTURE</span>
+<h2>OSNet — omni-scale feature learning</h2>
+<p class="sub">Zhou et al., ICCV 2019. Purpose-built for re-ID, and about 10× smaller than ResNet-50.</p>
+
+<h3>The problem it solves</h3>
+<p>Identity evidence lives at several scales at once, and they are not interchangeable. For a cow: a specific patch shape is <em>small-scale</em>; the arrangement of patches across the flank is <em>medium-scale</em>; overall body proportion and coat layout is <em>large-scale</em>. A standard ResNet block has one receptive field per layer, so it commits to a scale at each depth. OSNet refuses to commit — it computes multiple scales in the same block and <em>learns how to weight them per input</em>.</p>
+
+<h3>The building blocks</h3>
+<p><strong>Lite 3×3.</strong> A depthwise-separable convolution, ordered pointwise-then-depthwise: <code>1×1 conv</code> to mix channels, then <code>3×3 depthwise</code> for spatial extent. Costs roughly <code>1/9</code> of a standard 3×3 at the same channel count. This is why OSNet is ~2.2M parameters against ResNet-50's ~25.6M.</p>
+
+<p><strong>The omni-scale residual block (OSBlock).</strong> T parallel streams. Stream <em>t</em> is a stack of <em>t</em> Lite 3×3 layers, so stacking grows the receptive field: 1 layer → 3×3, 2 → 5×5, 3 → 7×7, 4 → 9×9. Four scales, computed simultaneously, from the same input.</p>
+
+<p><strong>Unified Aggregation Gate (AG).</strong> The part that makes it "omni-scale" rather than merely "multi-scale". A tiny sub-network (GAP → FC → ReLU → FC → sigmoid) produces per-channel weights, and the <em>same</em> AG is shared across all T streams. The streams are summed with input-dependent weights instead of being concatenated with fixed ones — so a blurry distant frame can lean on large-scale cues while a sharp close-up leans on fine texture, with no architecture change.</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 680 300" role="img" aria-label="OSNet omni-scale residual block with four streams and a shared aggregation gate">
+  <rect x="270" y="6" width="120" height="26" rx="4" fill="#2E3440"/><text x="330" y="24" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#7FD8BE">input x</text>
+  <line x1="330" y1="32" x2="330" y2="44" stroke="#8A97A0"/>
+  <rect x="278" y="44" width="104" height="24" rx="3" fill="#fff" stroke="#D0D6D1"/><text x="330" y="60" text-anchor="middle" class="sv-label">1×1 conv ↓C</text>
+  <path d="M330 68 L330 78 M80 78 L580 78 M80 78 L80 92 M247 78 L247 92 M413 78 L413 92 M580 78 L580 92" stroke="#8A97A0" fill="none"/>
+
+  <g font-family="JetBrains Mono" font-size="9.5" text-anchor="middle" fill="#14181C">
+    <rect x="30" y="92" width="100" height="26" rx="3" fill="#fff" stroke="#0F8B6C"/><text x="80" y="109">Lite 3×3</text>
+    <rect x="197" y="92" width="100" height="26" rx="3" fill="#fff" stroke="#0F8B6C"/><text x="247" y="109">Lite 3×3</text>
+    <rect x="197" y="122" width="100" height="26" rx="3" fill="#fff" stroke="#0F8B6C"/><text x="247" y="139">Lite 3×3</text>
+    <rect x="363" y="92" width="100" height="26" rx="3" fill="#fff" stroke="#0F8B6C"/><text x="413" y="109">Lite 3×3</text>
+    <rect x="363" y="122" width="100" height="26" rx="3" fill="#fff" stroke="#0F8B6C"/><text x="413" y="139">Lite 3×3</text>
+    <rect x="363" y="152" width="100" height="26" rx="3" fill="#fff" stroke="#0F8B6C"/><text x="413" y="169">Lite 3×3</text>
+    <rect x="530" y="92" width="100" height="26" rx="3" fill="#fff" stroke="#0F8B6C"/><text x="580" y="109">Lite 3×3</text>
+    <rect x="530" y="122" width="100" height="26" rx="3" fill="#fff" stroke="#0F8B6C"/><text x="580" y="139">Lite 3×3</text>
+    <rect x="530" y="152" width="100" height="26" rx="3" fill="#fff" stroke="#0F8B6C"/><text x="580" y="169">Lite 3×3</text>
+    <rect x="530" y="182" width="100" height="26" rx="3" fill="#fff" stroke="#0F8B6C"/><text x="580" y="199">Lite 3×3</text>
+  </g>
+  <g class="sv-label" text-anchor="middle">
+    <text x="80" y="134">RF 3×3</text><text x="247" y="164">RF 5×5</text><text x="413" y="194">RF 7×7</text><text x="580" y="224">RF 9×9</text>
+  </g>
+  <path d="M80 118 L80 240 M247 148 L247 240 M413 178 L413 240 M580 208 L580 240" stroke="#8A97A0" fill="none"/>
+
+  <rect x="10" y="232" width="200" height="30" rx="4" fill="#FDF7EA" stroke="#B87503" stroke-width="1.5"/>
+  <text x="110" y="251" text-anchor="middle" font-family="Space Grotesk" font-size="11" fill="#B87503">Aggregation Gate (shared)</text>
+  <text x="10" y="278" class="sv-label" fill="#B87503">GAP → FC → ReLU → FC → sigmoid → per-channel weights</text>
+  <path d="M210 247 L300 247" stroke="#B87503" stroke-dasharray="3 3"/>
+  <circle cx="330" cy="247" r="14" fill="#fff" stroke="#2E3440" stroke-width="2"/><text x="330" y="252" text-anchor="middle" font-size="13">Σ</text>
+  <path d="M80 240 L316 240 M247 240 L330 240 M413 240 L344 240 M580 240 L344 240" stroke="#8A97A0" fill="none"/>
+  <path d="M330 261 L330 282" stroke="#8A97A0" marker-end="url(#ar2)"/>
+  <path d="M262 20 L250 20 L250 292 L316 292" fill="none" stroke="#0F8B6C" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text x="360" y="296" class="sv-label" fill="#0F8B6C">+ residual identity</text>
+</svg>
+<figcaption>Four receptive fields in one block, fused by weights the network computes from the input itself. Standard multi-scale designs concatenate with fixed weights; the shared gate is what makes this adaptive.</figcaption>
+</figure>
+
+<h3>Architecture at a glance</h3>
+<table>
+<thead><tr><th>Stage</th><th>Contents</th><th class="mono">Out (256×128)</th></tr></thead>
+<tbody>
+<tr><td>conv1</td><td>7×7 conv s2 + max-pool</td><td class="mono">64×64×32</td></tr>
+<tr><td>conv2</td><td>2 × OSBlock, transition (1×1 + avgpool)</td><td class="mono">32×16×256</td></tr>
+<tr><td>conv3</td><td>2 × OSBlock, transition</td><td class="mono">16×8×384</td></tr>
+<tr><td>conv4</td><td>2 × OSBlock</td><td class="mono">16×8×512</td></tr>
+<tr><td>conv5</td><td>1×1 conv</td><td class="mono">16×8×512</td></tr>
+<tr><td>GAP + fc</td><td>embedding neck</td><td class="mono">512-d</td></tr>
+</tbody>
+</table>
+
+<div class="grid2">
+<div class="card"><h4>ResNet-50</h4><p style="margin:0">~25.6M params · generic ImageNet backbone · strong, universal, heavy. The honest baseline everyone reports.</p></div>
+<div class="card"><h4>OSNet x1.0</h4><p style="margin:0">~2.2M params · designed for re-ID · matches or beats ResNet-50 on person re-ID benchmarks at a tenth of the size. Deployable on a Jetson.</p></div>
+</div>
+
+<div class="key warn"><b>Sequencing advice</b>Do not start with OSNet. Build ResNet-50 + triplet first and record the number. OSNet's value is only visible as a delta against that baseline — and if you implement both at once and the result is bad, you will not know which half is wrong. Your results table is the point of this whole exercise.</div>
+</section>
+
+<section id="s6">
+<span class="snum">06 / TRAINING</span>
+<h2>Re-ID training</h2>
+<p class="sub">Two losses on one backbone, and the question that confuses everyone: what is the target?</p>
+
+<h3>Why there is no target embedding</h3>
+<p>In classification you have a target: the one-hot label. In regression you have a target: the number. In re-ID there is <strong>no target vector</strong>. Nobody knows what cow #17's embedding "should" be, and no such answer exists — any rotation of the entire space is equally valid.</p>
+<p>The supervision is <em>relational</em>. The loss is a function of distances <em>between</em> outputs, not of an output against a stored answer. Gradients flow from the comparison, backwards through all three (or two) forward passes, into the same shared weights. The network is not learning "where to put cow 17". It is learning "what makes two pictures of one cow look alike".</p>
+
+<div class="key"><b>The mental switch</b>Classification: <code>loss(output, label)</code>. Metric learning: <code>loss(output_a, output_p, output_n)</code>. Once you internalise that the label only tells you <em>which images are groupable</em> — never <em>where the group goes</em> — the rest of re-ID stops feeling strange.</div>
+
+<h3>The standard recipe: ID loss + triplet loss</h3>
+<p>Neither loss alone is best. Cross-entropy on identity labels gives fast, stable convergence and learns strongly discriminative features — but it optimises separability in the classifier's space, not distances in the embedding space. Triplet loss optimises exactly the geometry you deploy, but converges slowly and is fragile alone. Everyone uses both.</p>
+
+<div class="math">L_total = L_ID + λ · L_triplet          <span class="cm">// λ = 1.0 is the near-universal default</span>
+
+L_ID  = cross-entropy( fc(f), y )       <span class="cm">// N_train_ids outputs; discarded at test time</span>
+L_tri = max(0, d(a,p) − d(a,n) + m)     <span class="cm">// batch-hard, on the embedding itself</span></div>
+
+<h3>BNNeck — the detail that quietly wins 2–3%</h3>
+<p>The two losses want incompatible feature geometries: cross-entropy prefers features spread out along class-specific directions, triplet prefers them compact on a sphere. Applying both to the exact same vector makes them fight. BNNeck (Luo et al., "Bag of Tricks") separates them with a BatchNorm layer:</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 660 160" role="img" aria-label="BNNeck: triplet loss before BatchNorm, ID loss after">
+  <rect x="0" y="58" width="90" height="40" rx="4" fill="#2E3440"/><text x="45" y="83" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#7FD8BE">backbone</text>
+  <line x1="92" y1="78" x2="126" y2="78" stroke="#8A97A0" marker-end="url(#ar2)"/>
+  <rect x="132" y="58" width="86" height="40" rx="4" fill="#fff" stroke="#0F8B6C" stroke-width="1.5"/><text x="175" y="76" text-anchor="middle" font-family="JetBrains Mono" font-size="10">f_t (GAP)</text><text x="175" y="90" text-anchor="middle" class="sv-label">2048-d</text>
+  <path d="M175 100 L175 132" stroke="#0F8B6C" marker-end="url(#ar2)"/>
+  <text x="185" y="128" class="sv-label" fill="#0F8B6C">L_triplet — trained here</text>
+  <line x1="220" y1="78" x2="254" y2="78" stroke="#8A97A0" marker-end="url(#ar2)"/>
+  <rect x="260" y="58" width="76" height="40" rx="4" fill="#FDF7EA" stroke="#B87503" stroke-width="1.5"/><text x="298" y="83" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#B87503">BatchNorm</text>
+  <line x1="338" y1="78" x2="372" y2="78" stroke="#8A97A0" marker-end="url(#ar2)"/>
+  <rect x="378" y="58" width="86" height="40" rx="4" fill="#fff" stroke="#2E3440" stroke-width="1.5"/><text x="421" y="76" text-anchor="middle" font-family="JetBrains Mono" font-size="10">f_i</text><text x="421" y="90" text-anchor="middle" class="sv-label">normalised</text>
+  <line x1="466" y1="78" x2="500" y2="78" stroke="#8A97A0" marker-end="url(#ar2)"/>
+  <rect x="506" y="58" width="90" height="40" rx="4" fill="#FDF2F4" stroke="#D33A5C" stroke-dasharray="4 3"/><text x="551" y="76" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#D33A5C">fc → softmax</text><text x="551" y="90" text-anchor="middle" class="sv-label" fill="#D33A5C">L_ID</text>
+  <path d="M421 100 L421 140" stroke="#2E3440" stroke-dasharray="3 3" marker-end="url(#ar2)"/>
+  <text x="431" y="152" class="sv-label" fill="#2E3440">f_i is the vector you deploy (cosine)</text>
+  <text x="506" y="120" class="sv-label" fill="#D33A5C">deleted at test</text>
+</svg>
+</figure>
+
+<h3>Training checklist</h3>
+<table>
+<thead><tr><th>Item</th><th>Default</th><th>Note</th></tr></thead>
+<tbody>
+<tr><td>Sampler</td><td class="mono">PK: P=16, K=4</td><td>Not random. Batch-hard needs positives in every batch.</td></tr>
+<tr><td>Margin</td><td class="mono">0.3</td><td>Or soft-margin softplus if you see collapse.</td></tr>
+<tr><td>Optimiser</td><td class="mono">Adam, lr 3.5e-4</td><td>Warmup 10 epochs, then step decay ×0.1 at 40 and 70.</td></tr>
+<tr><td>Epochs</td><td class="mono">120</td><td>Re-ID converges slower than classification.</td></tr>
+<tr><td>Label smoothing</td><td class="mono">ε = 0.1</td><td>On L_ID only. Stops overconfidence on training IDs.</td></tr>
+<tr><td>Augmentation</td><td class="mono">flip, crop, erasing</td><td>Random erasing is the big one for occlusion robustness.</td></tr>
+<tr><td>Backbone init</td><td class="mono">ImageNet</td><td>Non-negotiable at your dataset size.</td></tr>
+</tbody>
+</table>
+
+<div class="key warn"><b>Two augmentations that will silently break you</b>Do not use aggressive colour jitter or grayscale on animals whose identity <em>is</em> their coat pattern — you are training the model to ignore its best signal. And be careful with horizontal flip if your individuals have asymmetric markings; flip is standard for people, but a cow with a patch only on its left flank becomes a different-looking animal. Ablate both. That is a row in your results table.</div>
+
+<h3>Metrics — report these, always</h3>
+<ul>
+<li><strong>Rank-1 (CMC top-1)</strong> — fraction of queries whose nearest gallery neighbour is the right identity. The headline number.</li>
+<li><strong>Rank-5</strong> — right identity anywhere in the top 5. Forgiving; useful for human-in-the-loop workflows.</li>
+<li><strong>mAP</strong> — averages precision over <em>all</em> correct matches, not just the first. Rewards a model that retrieves all 20 images of a cow, not just one lucky one. Always report it alongside rank-1; a big rank-1/mAP gap means the model gets lucky rather than being reliable.</li>
+</ul>
+<div class="key why"><b>Protocol discipline</b>Query and gallery identities must not appear in training. If they do, your numbers are classification accuracy wearing a re-ID costume, and the model will fail on the first new cow. Split by <em>identity</em>, never by image.</div>
+</section>
+
+<section id="s7">
+<span class="snum">07 / DEPLOYMENT</span>
+<h2>Inference pipeline</h2>
+<p class="sub">Training is over. The head is gone. Here is what actually runs.</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 700 250" role="img" aria-label="Inference pipeline from crop to identity decision">
+  <g font-family="JetBrains Mono" font-size="10" text-anchor="middle">
+    <rect x="0" y="40" width="92" height="46" rx="4" fill="#fff" stroke="#D0D6D1"/><text x="46" y="60">crop</text><text x="46" y="74" fill="#5C6670">from detector</text>
+    <rect x="112" y="40" width="92" height="46" rx="4" fill="#fff" stroke="#D0D6D1"/><text x="158" y="60">resize +</text><text x="158" y="74" fill="#5C6670">normalise</text>
+    <rect x="224" y="40" width="102" height="46" rx="4" fill="#2E3440"/><text x="275" y="60" fill="#7FD8BE">backbone</text><text x="275" y="74" fill="#9AA7AE">frozen, eval()</text>
+    <rect x="346" y="40" width="92" height="46" rx="4" fill="#fff" stroke="#0F8B6C" stroke-width="1.5"/><text x="392" y="60" fill="#0F8B6C">L2-norm</text><text x="392" y="74" fill="#5C6670">512-d</text>
+    <rect x="458" y="40" width="102" height="46" rx="4" fill="#fff" stroke="#D0D6D1"/><text x="509" y="60">similarity</text><text x="509" y="74" fill="#5C6670">vs gallery</text>
+    <rect x="580" y="40" width="110" height="46" rx="4" fill="#fff" stroke="#2E3440" stroke-width="1.5"/><text x="635" y="60">top-k + τ</text><text x="635" y="74" fill="#5C6670">decision</text>
+  </g>
+  <g stroke="#8A97A0" fill="none" marker-end="url(#ar2)">
+    <line x1="94" y1="63" x2="108" y2="63"/><line x1="206" y1="63" x2="220" y2="63"/><line x1="328" y1="63" x2="342" y2="63"/><line x1="440" y1="63" x2="454" y2="63"/><line x1="562" y1="63" x2="576" y2="63"/>
+  </g>
+
+  <rect x="440" y="130" width="250" height="100" rx="5" fill="#FBFCFB" stroke="#D0D6D1"/>
+  <text x="452" y="150" class="sv-title">gallery / ID database</text>
+  <g font-family="JetBrains Mono" font-size="9.5" fill="#14181C">
+    <text x="452" y="170">cow_017 → [512 floats] × 24 images</text>
+    <text x="452" y="188">cow_018 → [512 floats] × 11 images</text>
+    <text x="452" y="206">cow_019 → [512 floats] ×  6 images</text>
+    <text x="452" y="222" fill="#5C6670">…editable at runtime, no retraining</text>
+  </g>
+  <path d="M565 130 L509 92" stroke="#8A97A0" stroke-dasharray="3 3" marker-end="url(#ar2)"/>
+
+  <text x="0" y="150" class="sv-title">the decision</text>
+  <g font-family="JetBrains Mono" font-size="10">
+    <text x="0" y="172" fill="#0F8B6C">sim ≥ τ  →  assign existing ID</text>
+    <text x="0" y="192" fill="#D33A5C">sim &lt; τ  →  unknown → new ID</text>
+    <text x="0" y="212" fill="#B87503">near τ   →  flag for human review</text>
+  </g>
+</svg>
+</figure>
+
+<h4>Practical notes</h4>
+<ul>
+<li><strong>One embedding per identity, or many?</strong> Many. Store every good crop, then score a query against an identity by the <em>mean of its top-3 similarities</em> to that identity's embeddings. Far more robust than a single centroid, and Schneider et al. found multi-image comparison per individual measurably improves cattle re-ID.</li>
+<li><strong>Batch your crops.</strong> One forward pass over 32 crops from a frame, not 32 forward passes.</li>
+<li><strong>Cache aggressively.</strong> Gallery embeddings are computed once. Only queries are live.</li>
+<li><strong>Quality gate first.</strong> Cheap rejects — tiny box, high blur, box touching frame edge — before the backbone. Bad crops produce confident wrong matches, which are worse than no match.</li>
+</ul>
+</section>
+
+<section id="s8">
+<span class="snum">08 / OPEN-SET</span>
+<h2>Open-set and new animals</h2>
+<p class="sub">Closed-set says "which of these 40 cows is it". Open-set says "is it even one of them". Only the second one is a farm.</p>
+
+<p>A softmax classifier is structurally incapable of this. Its outputs sum to 1, so a brand-new cow is forced into an existing class, usually with high confidence. This is the single strongest argument for the embedding approach and it is worth stating plainly in your write-up: <strong>re-ID handles new individuals because identity lives in a database, not in the weights.</strong></p>
+
+<h3>Choosing τ</h3>
+<p>Compute similarities on a validation set for two populations — pairs from the same individual, and pairs from different individuals — and plot both distributions. τ is where you cut between them, and the overlap region is your irreducible error.</p>
+
+<div class="lab">
+<div class="lab-head">Lab 02 · threshold explorer</div>
+<div class="lab-body">
+<canvas id="cv2" height="240" aria-label="Interactive threshold and error-rate explorer"></canvas>
+<div class="ctl">
+  <label>threshold τ <input type="range" id="th" min="0" max="1" step="0.01" value="0.62"><span id="thv">0.62</span></label>
+  <label>model quality <input type="range" id="sep" min="0.05" max="0.45" step="0.01" value="0.28"><span id="sepv">0.28</span></label>
+  <span><span class="dot" style="background:#0F8B6C"></span>same ID</span>
+  <span><span class="dot" style="background:#D33A5C"></span>different ID</span>
+</div>
+<div class="readout">
+  <div>false accept rate<b id="far" style="color:#D33A5C">—</b></div>
+  <div>false reject rate<b id="frr" style="color:#B87503">—</b></div>
+  <div>accuracy<b id="acc">—</b></div>
+</div>
+<p style="font-size:14px;color:var(--muted);margin:14px 0 0">Drag <em>model quality</em> to see what a better backbone actually buys: separation, which widens the range of τ that works. A well-separated model is one you don't have to tune carefully.</p>
+</div>
+</div>
+
+<h3>Which error do you prefer?</h3>
+<table>
+<thead><tr><th>Error</th><th>Means</th><th>Consequence on the farm</th></tr></thead>
+<tbody>
+<tr><td class="mono">False accept</td><td>Different cows merged into one record</td><td>Silent, corrupting. Two animals' behaviour data blended; the mistake propagates and is hard to detect later.</td></tr>
+<tr><td class="mono">False reject</td><td>Known cow enrolled as new</td><td>Visible. Gallery grows with duplicates, but records can be merged afterwards.</td></tr>
+</tbody>
+</table>
+<div class="key"><b>Set τ high</b>For a livestock ID database, false accepts are the expensive error. Bias τ towards rejecting, accept the duplicates, and add a periodic merge pass that clusters gallery entries with very high mutual similarity. Report <strong>TAR@FAR=1%</strong> alongside rank-1 — it is the metric that reflects this decision, and rank-1 alone hides it completely.</div>
+
+<h3>Enrolment loop</h3>
+<div class="math">1. embed query crop → v
+2. s = max similarity over gallery
+3. if s ≥ τ_high        → assign that ID, append v to its set (if quality is good)
+   elif s &lt; τ_low       → create new ID, seed gallery with v
+   else                 → hold in a pending buffer; ask a human, or wait for
+                          more frames of the same track and vote</div>
+<p>The two-threshold band is what turns a brittle binary decision into a system that degrades gracefully. Track-level voting is nearly free once you have tracking (§10) and it removes most single-frame errors.</p>
+
+<div class="key warn"><b>Gallery drift</b>Cattle change: coats moult, animals grow, mud happens. If you only ever store enrolment-day embeddings, accuracy decays over months. Append recent high-confidence embeddings and cap each identity at, say, 50 vectors with a recency-weighted eviction policy. Log the date on every embedding so you can measure the drift instead of guessing at it.</div>
+</section>
+
+<section id="s9">
+<span class="snum">09 / SCALE</span>
+<h2>Large-scale search</h2>
+<p class="sub">Honest framing: at your scale you do not need this yet. Know when you will.</p>
+
+<p>Brute-force search is a matrix multiply: query <code>1×512</code> against gallery <code>N×512</code>. On a GPU this is trivially fast until N gets large.</p>
+
+<table>
+<thead><tr><th class="mono">Gallery size</th><th>Brute force (512-d)</th><th>Do this</th></tr></thead>
+<tbody>
+<tr><td class="mono">&lt; 10k</td><td>&lt; 1 ms</td><td>numpy dot product. Genuinely. Stop here.</td></tr>
+<tr><td class="mono">10k – 1M</td><td>~ms</td><td><code>faiss.IndexFlatIP</code> — still exact, just fast.</td></tr>
+<tr><td class="mono">1M – 100M</td><td>too slow</td><td><code>IndexIVFFlat</code> or HNSW — approximate.</td></tr>
+<tr><td class="mono">&gt; 100M</td><td>—</td><td><code>IVF+PQ</code> (compressed) or a hosted vector DB.</td></tr>
+</tbody>
+</table>
+
+<h4>FAISS in four lines</h4>
+<div class="math">import faiss, numpy as np
+faiss.normalize_L2(gallery)                    <span class="cm"># in-place; makes IP == cosine</span>
+index = faiss.IndexFlatIP(512); index.add(gallery)
+D, I = index.search(query, k=5)                <span class="cm"># D = cosine sims, I = row indices</span></div>
+
+<h4>The three index families</h4>
+<ul>
+<li><strong>Flat</strong> — exact, no training, no accuracy loss. Memory = N × d × 4 bytes.</li>
+<li><strong>IVF</strong> — k-means partitions the space into cells; search only the <code>nprobe</code> nearest cells. Needs a <code>train()</code> call on representative vectors. <code>nprobe</code> is your speed/recall dial.</li>
+<li><strong>HNSW</strong> — a navigable small-world graph. Excellent recall, high memory, no training step. Usually the best default when Flat stops being viable.</li>
+</ul>
+<p><strong>PQ (product quantisation)</strong> is orthogonal: it compresses each vector into a few bytes, trading accuracy for 10–30× memory reduction. Combine as <code>IVF+PQ</code> only when RAM is the actual constraint.</p>
+
+<div class="key why"><b>Where the real cost is</b>Profile before you optimise. At farm scale the bottleneck is the detector and the crop pipeline, not the nearest-neighbour search. Reaching for FAISS early is optimising the 0.3% — a classic way to lose a week.</div>
+</section>
+
+<section id="s10">
+<span class="snum">10 / APPLICATION</span>
+<h2>The cow project</h2>
+<p class="sub">Where every previous section lands.</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 700 270" role="img" aria-label="Full cattle pipeline: detection, re-ID, database, tracking, behaviour">
+  <g font-family="JetBrains Mono" font-size="10" text-anchor="middle">
+    <rect x="0" y="30" width="118" height="52" rx="5" fill="#fff" stroke="#D0D6D1"/><text x="59" y="52">DETECTION</text><text x="59" y="68" fill="#5C6670">YOLO / CenterNet</text>
+    <rect x="146" y="30" width="118" height="52" rx="5" fill="#2E3440"/><text x="205" y="52" fill="#7FD8BE">RE-ID</text><text x="205" y="68" fill="#9AA7AE">OSNet → 512-d</text>
+    <rect x="292" y="30" width="118" height="52" rx="5" fill="#fff" stroke="#0F8B6C" stroke-width="1.5"/><text x="351" y="52" fill="#0F8B6C">ID DATABASE</text><text x="351" y="68" fill="#5C6670">gallery + τ</text>
+    <rect x="438" y="30" width="118" height="52" rx="5" fill="#fff" stroke="#D0D6D1"/><text x="497" y="52">TRACKING</text><text x="497" y="68" fill="#5C6670">motion + appearance</text>
+    <rect x="584" y="30" width="116" height="52" rx="5" fill="#fff" stroke="#B87503" stroke-width="1.5"/><text x="642" y="52" fill="#B87503">BEHAVIOUR</text><text x="642" y="68" fill="#5C6670">temporal head</text>
+  </g>
+  <g stroke="#8A97A0" fill="none" marker-end="url(#ar2)">
+    <line x1="120" y1="56" x2="142" y2="56"/><line x1="266" y1="56" x2="288" y2="56"/><line x1="412" y1="56" x2="434" y2="56"/><line x1="558" y1="56" x2="580" y2="56"/>
+  </g>
+  <path d="M497 84 L497 104 L205 104 L205 86" fill="none" stroke="#B87503" stroke-dasharray="4 3" marker-end="url(#ar2)"/>
+  <text x="350" y="118" text-anchor="middle" class="sv-label" fill="#B87503">track-level voting feeds cleaner identity decisions back</text>
+
+  <rect x="0" y="150" width="700" height="106" rx="5" fill="#FBFCFB" stroke="#D0D6D1"/>
+  <text x="16" y="172" class="sv-title">what each stage owns</text>
+  <g font-family="JetBrains Mono" font-size="9.5" fill="#14181C">
+    <text x="16" y="194">detection  · where is an animal in this frame            · box coords</text>
+    <text x="16" y="212">re-ID      · which animal is this, across cameras/days   · 512-d vector</text>
+    <text x="16" y="230">tracking   · which box is which across adjacent frames   · short-term track id</text>
+    <text x="16" y="248">behaviour  · what is this animal doing over time         · class per track segment</text>
+  </g>
+</svg>
+</figure>
+
+<div class="key why"><b>Tracking ≠ re-ID, and conflating them is the classic mistake</b>Tracking links boxes across <em>consecutive frames</em>, mostly using motion (IoU, Kalman) — it survives seconds. Re-ID links identities across <em>occlusions, cameras, and days</em> using appearance — it survives months. JDE and FairMOT, both in your project folder, are exactly the architectures that fuse the two: one backbone, a detection head and a re-ID embedding head sharing features. FairMOT's central argument is that anchor-based detection heads corrupt the embedding head (features get sampled at anchor centres that don't align with object centres), which is why it uses an anchor-free CenterNet-style detector. That is the same argument that puts CenterNet on your roadmap before the JDE merge.</div>
+
+<h3>Why cattle are harder than tigers</h3>
+<table>
+<thead><tr><th>Factor</th><th>ATRW tigers</th><th>Your cattle</th></tr></thead>
+<tbody>
+<tr><td>Pattern distinctiveness</td><td>High — stripes are near-unique</td><td>Variable. Holsteins have usable patches; solid-coloured breeds may have almost no visual signature</td></tr>
+<tr><td>Viewpoint</td><td>Mostly side-on</td><td>Overhead, side, rear — and top-down looks nothing like side-on</td></tr>
+<tr><td>Population</td><td>~90 identities</td><td>Whole herd, growing, with arrivals and departures</td></tr>
+<tr><td>Appearance stability</td><td>Stable</td><td>Mud, moulting, growth, seasonal coat</td></tr>
+</tbody>
+</table>
+<div class="key warn"><b>Plan for the honest failure case</b>If your breed is uniformly coloured, appearance re-ID may hit a ceiling no architecture fixes — there is simply no signal in the pixels. Test this early with a cheap experiment: embed a few hundred crops with an ImageNet-pretrained ResNet, cluster, and see whether same-animal crops group at all. If they don't, you need ear tags, RFID, or top-down body-shape features in the loop, and it is far better to learn that in week 2 than week 20.</div>
+
+<h3>Suggested build order</h3>
+<table>
+<thead><tr><th class="mono">Step</th><th>Build</th><th>Record</th></tr></thead>
+<tbody>
+<tr><td class="mono">1</td><td>ResNet-50 + softmax, ATRW, closed-set</td><td>rank-1 baseline</td></tr>
+<tr><td class="mono">2</td><td>Strip head, use GAP features + cosine, unseen IDs</td><td>the drop — this is the lesson</td></tr>
+<tr><td class="mono">3</td><td>Add triplet loss, PK sampler, batch-hard</td><td>rank-1, rank-5, mAP</td></tr>
+<tr><td class="mono">4</td><td>Add BNNeck, label smoothing, random erasing</td><td>delta per trick</td></tr>
+<tr><td class="mono">5</td><td>Swap in OSNet</td><td>accuracy vs params vs latency</td></tr>
+<tr><td class="mono">6</td><td>Open-set eval, sweep τ</td><td>TAR@FAR=1%</td></tr>
+<tr><td class="mono">7</td><td>Fine-tune on cattle</td><td>same table, new dataset column</td></tr>
+</tbody>
+</table>
+<p>One table, one row per version, never deleted. The reason step 2 exists is that the drop from closed-set to open-set is the single most convincing number in your entire write-up — it is the empirical proof that classification cannot do this job.</p>
+</section>
+
+<section id="gl">
+<span class="snum">— / REFERENCE</span>
+<h2>Glossary</h2>
+<table>
+<tbody>
+<tr><td class="mono" style="width:180px">Anchor</td><td>The reference image in a triplet.</td></tr>
+<tr><td class="mono">Backbone</td><td>The conv stack that turns an image into a feature map. Kept at deployment.</td></tr>
+<tr><td class="mono">Batch-hard</td><td>Mining the furthest positive and nearest negative within each batch.</td></tr>
+<tr><td class="mono">BNNeck</td><td>A BatchNorm layer separating the triplet-loss feature from the ID-loss feature.</td></tr>
+<tr><td class="mono">CMC</td><td>Cumulative Matching Characteristic. Rank-k = correct ID appears in top k.</td></tr>
+<tr><td class="mono">Closed-set</td><td>Every test identity was seen in training.</td></tr>
+<tr><td class="mono">Embedding</td><td>The output vector whose geometry encodes identity.</td></tr>
+<tr><td class="mono">FAR / FRR</td><td>False accept rate (wrong match let in) / false reject rate (right match turned away).</td></tr>
+<tr><td class="mono">Gallery</td><td>The database of enrolled embeddings searched at query time.</td></tr>
+<tr><td class="mono">GAP</td><td>Global Average Pooling. C×H×W → C-dim vector.</td></tr>
+<tr><td class="mono">Hard negative</td><td>A different identity that looks confusingly similar.</td></tr>
+<tr><td class="mono">Head</td><td>The task-specific layers after the backbone. Deleted in re-ID.</td></tr>
+<tr><td class="mono">mAP</td><td>Mean average precision over all correct matches, not just the first.</td></tr>
+<tr><td class="mono">Margin</td><td>The required separation between positive and negative distances.</td></tr>
+<tr><td class="mono">Omni-scale</td><td>Multiple receptive fields fused with input-dependent learned weights.</td></tr>
+<tr><td class="mono">Open-set</td><td>Test identities may never have been seen. The realistic setting.</td></tr>
+<tr><td class="mono">PK sampling</td><td>P identities × K images per batch.</td></tr>
+<tr><td class="mono">Query</td><td>The new image being identified.</td></tr>
+<tr><td class="mono">Receptive field</td><td>How much of the input one neuron can see.</td></tr>
+<tr><td class="mono">Re-ID</td><td>Deciding whether two observations are the same individual.</td></tr>
+<tr><td class="mono">Siamese</td><td>Two or more inputs through one shared-weight network.</td></tr>
+<tr><td class="mono">TAR@FAR</td><td>True accept rate at a fixed false accept rate. The open-set metric.</td></tr>
+<tr><td class="mono">τ (tau)</td><td>Similarity threshold. Chosen on validation, not learned.</td></tr>
+</tbody>
+</table>
+</section>
+
+  </div>
+</main>
+</div>
+
+<footer>
+  <div class="wrap">
+    Sources in your project folder: Schneider, Taylor &amp; Kremer (2022), <em>Similarity learning networks for animal individual re-identification</em>, Mammalian Biology · Wang et al. (2020), <em>Towards Real-Time Multi-Object Tracking</em> (JDE) · Zhang et al. (2021), <em>FairMOT</em>. Also referenced: Zhou et al. (2019), <em>Omni-Scale Feature Learning for Person Re-ID</em> (OSNet) · Hermans et al. (2017), <em>In Defense of the Triplet Loss</em> · Luo et al. (2019), <em>Bag of Tricks</em>.
+  </div>
+</footer>
+
+<script>
+/* ---------- TOC scrollspy ---------- */
+(function(){
+  var links=[].slice.call(document.querySelectorAll('.toc a'));
+  var secs=links.map(function(a){return document.querySelector(a.getAttribute('href'));});
+  function upd(){
+    var y=window.scrollY+160,cur=0;
+    secs.forEach(function(s,i){ if(s && s.offsetTop<=y) cur=i; });
+    links.forEach(function(a,i){ a.classList.toggle('on',i===cur); });
+  }
+  window.addEventListener('scroll',upd,{passive:true}); upd();
+})();
+
+/* ---------- Lab 01: triplet loss simulator ---------- */
+(function(){
+  var cv=document.getElementById('cv'); if(!cv) return;
+  var ctx=cv.getContext('2d');
+  var COL=['#0F8B6C','#D33A5C','#B87503'];
+  var P=3,K=6,pts=[],step=0,timer=null;
+  var mrg=document.getElementById('mrg'),lr=document.getElementById('lr'),mine=document.getElementById('mine');
+
+  function fit(){ var r=cv.getBoundingClientRect(); var dpr=window.devicePixelRatio||1;
+    cv.width=r.width*dpr; cv.height=330*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); return r.width; }
+  var W=fit(); window.addEventListener('resize',function(){W=fit();draw();});
+
+  function reset(){
+    pts=[]; step=0;
+    for(var i=0;i<P;i++) for(var k=0;k<K;k++)
+      pts.push({id:i,x:(Math.random()-0.5)*1.6,y:(Math.random()-0.5)*1.6});
+    draw(); update(0,0,0,0);
+  }
+  function d(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
+
+  function train(){
+    var m=+mrg.value, eta=+lr.value, hard=mine.value==='hard';
+    var g=pts.map(function(){return {x:0,y:0};});
+    var loss=0,active=0,sp=0,sn=0,c=0;
+    pts.forEach(function(a,ai){
+      var pos=[],neg=[];
+      pts.forEach(function(b,bi){ if(bi===ai)return; (b.id===a.id?pos:neg).push(bi); });
+      var pi,ni;
+      if(hard){
+        pi=pos.reduce(function(x,y){return d(a,pts[y])>d(a,pts[x])?y:x;});
+        ni=neg.reduce(function(x,y){return d(a,pts[y])<d(a,pts[x])?y:x;});
+      }else{
+        pi=pos[(Math.random()*pos.length)|0]; ni=neg[(Math.random()*neg.length)|0];
+      }
+      var p=pts[pi],n=pts[ni];
+      var dp=d(a,p)+1e-9, dn=d(a,n)+1e-9;
+      sp+=dp; sn+=dn; c++;
+      var l=dp-dn+m;
+      if(l>0){
+        loss+=l; active++;
+        var gx=(a.x-p.x)/dp-(a.x-n.x)/dn, gy=(a.y-p.y)/dp-(a.y-n.y)/dn;
+        g[ai].x+=gx; g[ai].y+=gy;
+        g[pi].x-=(a.x-p.x)/dp; g[pi].y-=(a.y-p.y)/dp;
+        g[ni].x+=(a.x-n.x)/dn; g[ni].y+=(a.y-n.y)/dn;
+      }
+    });
+    pts.forEach(function(pt,i){ pt.x-=eta*g[i].x; pt.y-=eta*g[i].y; });
+    step++;
+    update(loss/pts.length, active, sp/c, sn/c);
+  }
+
+  function update(l,a,mp,mn){
+    document.getElementById('rl').textContent=l.toFixed(3);
+    document.getElementById('ra').textContent=a+' / '+pts.length;
+    document.getElementById('rp').textContent=mp.toFixed(2);
+    document.getElementById('rn').textContent=mn.toFixed(2);
+    document.getElementById('rs').textContent=step;
+  }
+
+  function draw(){
+    var H=330; ctx.clearRect(0,0,W,H);
+    var cx=W/2, cy=H/2, s=Math.min(W,H)/4.6;
+    ctx.strokeStyle='#EDF0EE'; ctx.lineWidth=1;
+    for(var i=-3;i<=3;i++){
+      ctx.beginPath(); ctx.moveTo(cx+i*s,0); ctx.lineTo(cx+i*s,H); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0,cy+i*s); ctx.lineTo(W,cy+i*s); ctx.stroke();
+    }
+    // hulls
+    for(var id=0;id<P;id++){
+      var g=pts.filter(function(p){return p.id===id;});
+      var mx=g.reduce(function(a,p){return a+p.x;},0)/g.length;
+      var my=g.reduce(function(a,p){return a+p.y;},0)/g.length;
+      var r=Math.max.apply(null,g.map(function(p){return Math.hypot(p.x-mx,p.y-my);}));
+      ctx.beginPath(); ctx.arc(cx+mx*s,cy+my*s,Math.max(r*s,6),0,7);
+      ctx.strokeStyle=COL[id]; ctx.setLineDash([3,4]); ctx.globalAlpha=.55; ctx.stroke();
+      ctx.setLineDash([]); ctx.globalAlpha=.07; ctx.fillStyle=COL[id]; ctx.fill(); ctx.globalAlpha=1;
+    }
+    pts.forEach(function(p){
+      ctx.beginPath(); ctx.arc(cx+p.x*s,cy+p.y*s,5,0,7);
+      ctx.fillStyle=COL[p.id]; ctx.fill();
+    });
+    ctx.font='10px JetBrains Mono, monospace'; ctx.fillStyle='#5C6670';
+    ctx.fillText('3 identities × 6 images · 2-D embedding space',10,18);
+  }
+
+  document.getElementById('mrg').addEventListener('input',function(){document.getElementById('mrgv').textContent=(+this.value).toFixed(2);});
+  document.getElementById('lr').addEventListener('input',function(){document.getElementById('lrv').textContent=(+this.value).toFixed(3);});
+  document.getElementById('step').addEventListener('click',function(){for(var i=0;i<20;i++)train();draw();});
+  document.getElementById('reset').addEventListener('click',function(){clearInterval(timer);timer=null;document.getElementById('run').textContent='Run';reset();});
+  document.getElementById('run').addEventListener('click',function(){
+    if(timer){clearInterval(timer);timer=null;this.textContent='Run';}
+    else{this.textContent='Pause';timer=setInterval(function(){train();draw();},40);}
+  });
+  reset();
+})();
+
+/* ---------- Lab 02: threshold explorer ---------- */
+(function(){
+  var cv=document.getElementById('cv2'); if(!cv) return;
+  var ctx=cv.getContext('2d');
+  var th=document.getElementById('th'), sep=document.getElementById('sep');
+  function fit(){ var r=cv.getBoundingClientRect(); var dpr=window.devicePixelRatio||1;
+    cv.width=r.width*dpr; cv.height=240*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); return r.width; }
+  var W=fit(); window.addEventListener('resize',function(){W=fit();draw();});
+
+  function gauss(x,mu,sd){ return Math.exp(-0.5*Math.pow((x-mu)/sd,2)); }
+  function erf(x){ var s=x<0?-1:1; x=Math.abs(x);
+    var t=1/(1+0.3275911*x);
+    var y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x);
+    return s*y; }
+  function cdf(x,mu,sd){ return 0.5*(1+erf((x-mu)/(sd*Math.SQRT2))); }
+
+  function draw(){
+    var H=240, t=+th.value, q=+sep.value;
+    var muS=0.5+q, muD=0.5-q, sd=0.11;
+    ctx.clearRect(0,0,W,H);
+    var pad=34, pw=W-pad*2, ph=H-56;
+    // axis
+    ctx.strokeStyle='#D0D6D1'; ctx.beginPath(); ctx.moveTo(pad,H-34); ctx.lineTo(W-pad,H-34); ctx.stroke();
+    ctx.font='10px JetBrains Mono, monospace'; ctx.fillStyle='#5C6670';
+    [0,0.25,0.5,0.75,1].forEach(function(v){ ctx.fillText(v.toFixed(2),pad+v*pw-12,H-18); });
+    ctx.fillText('cosine similarity',W/2-42,H-4);
+
+    function curve(mu,col){
+      ctx.beginPath();
+      for(var i=0;i<=200;i++){ var x=i/200, y=gauss(x,mu,sd);
+        var px=pad+x*pw, py=H-34-y*ph*0.86;
+        i?ctx.lineTo(px,py):ctx.moveTo(px,py); }
+      ctx.lineTo(W-pad,H-34); ctx.lineTo(pad,H-34); ctx.closePath();
+      ctx.fillStyle=col; ctx.globalAlpha=.18; ctx.fill(); ctx.globalAlpha=1;
+      ctx.strokeStyle=col; ctx.lineWidth=1.6; ctx.stroke();
+    }
+    curve(muD,'#D33A5C'); curve(muS,'#0F8B6C');
+
+    var tx=pad+t*pw;
+    ctx.strokeStyle='#14181C'; ctx.lineWidth=2; ctx.setLineDash([5,4]);
+    ctx.beginPath(); ctx.moveTo(tx,10); ctx.lineTo(tx,H-34); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#14181C'; ctx.fillText('τ = '+t.toFixed(2),Math.min(tx+6,W-pad-50),20);
+
+    var far=1-cdf(t,muD,sd);      // different pairs above threshold
+    var frr=cdf(t,muS,sd);        // same pairs below threshold
+    document.getElementById('far').textContent=(far*100).toFixed(1)+'%';
+    document.getElementById('frr').textContent=(frr*100).toFixed(1)+'%';
+    document.getElementById('acc').textContent=((1-(far+frr)/2)*100).toFixed(1)+'%';
+    document.getElementById('thv').textContent=t.toFixed(2);
+    document.getElementById('sepv').textContent=q.toFixed(2);
+  }
+  th.addEventListener('input',draw); sep.addEventListener('input',draw);
+  draw();
+})();
+</script>
+</body>
+</html>

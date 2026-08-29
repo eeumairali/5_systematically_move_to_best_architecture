@@ -1,0 +1,161 @@
+%% ############ Instructions ####################
+%%
+%% This template is created for "Khulna University 
+%% Studies (KU Studies)" journal. This needs to be compiled in 
+%% "LuaLatex" environment. In OVERLEAF, to set the 
+%% "LuaLatex", press the "Menu" button on top-left and 
+%% set the option "compiler" to "LuaLatex".
+%% This is due to the dependency of Garamond font.
+%%
+%% Developed by:
+%% Atanu Shome
+%% Computer Science & Engineering Discipline,
+%% Khulna University
+%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\documentclass[12pt,a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{tabularx,booktabs}
+\usepackage{caption}
+\usepackage{wrapfig}
+\usepackage[english]{babel}
+\usepackage[style=apa, backend=biber]{biblatex}
+\usepackage{xcolor}
+\usepackage{fontspec}
+\usepackage{CormorantGaramond}
+
+
+
+%% Set Journal Name on each page
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\lhead{\textit{\small Khulna University Studies}}
+\fancyfoot[C]{\thepage}
+%% *************** KUS Title **********************
+\usepackage{titlesec}
+\titleformat*{\section}{\fontsize{13}{01}\bfseries}
+\titleformat*{\subsection}{\fontsize{12}{01}\bfseries}
+\title{% added <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+\centering\normalsize  
+\vspace{-0.7in}
+\colorbox{black}{\parbox{\linewidth}{\textcolor{white}{\hfill\KUS \hfill}}} \\[0.5ex]
+\begin{minipage}{\dimexpr0.5\linewidth-0.5\wlogo}\oriart\end{minipage}%
+\begin{minipage}{\dimexpr0.5\linewidth+0.5\wlogo-6pt}\LOGO \end{minipage}\\[0.5ex]
+\colorbox{black}{\parbox{\linewidth}{\textcolor{white}{\hfill\KUni\hfill}}}\\[1ex]
+\titleofArt
+}
+\newlength{\wlogo}
+% ******************* KUS Title Formatting END *****
+
+% ************** DATA to be filled by the USER <<<<<<<<<<<<<<<<<<<<
+\author{Author Name}
+\date{} 
+\newcommand{\KUS}{\normalsize\bfseries\itshape Khulna University Studies}
+\newcommand{\KUni}{\normalsize\bfseries\itshape Copyright\,©Khulna University}
+\newcommand{\oriart}{\normalsize\bfseries ORIGINAL ARTICLE}
+\setlength{\wlogo}{1.15cm}
+\newcommand{\LOGO}{\includegraphics[width=\wlogo]{Figures/logo.png}}
+\newcommand{\titleofArt}{\textbf{ \large TYPE OR PASTE THE TITLE OF YOUR ARTICLE HERE}}
+% ******************************
+
+%% ############ Reference SOURCE File ##############
+\addbibresource{ref.bib}
+
+
+\begin{document}
+\maketitle  
+%%%%%% DO NOT TOUCH THIS %%%%%%%%%%%%%%%%%%%%%%%%%%
+\fancypagestyle{Initial}{%
+    %\addtolength\topmargin{-0.7in}
+    \fancyhead{}
+}
+\thispagestyle{Initial}
+
+\noindent
+\rule{\textwidth}{0.4pt}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section*{Abstract}
+Type or paste your abstract here as prescribed by the journal’s instructions for authors (maximum 250 words, No citations). Define abbreviations at their first mention. Type or paste your abstract here as prescribed by the journal’s instructions for authors. Type or paste your abstract here as prescribed by the journal’s instructions for authors. Type or paste your abstract here. Type or paste your abstract here as prescribed by the journal’s instructions for authors. Type or paste your abstract here as prescribed by the journal’s instructions for authors. Type or paste your abstract here as prescribed by the journal’s instructions for authors. Type or paste your abstract here. Type or paste your abstract here as prescribed by the journal’s instructions for authors. Type or paste your abstract here as prescribed by the journal’s instructions for authors. Type or paste your abstract here as prescribed by the journal’s instructions for authors. Type or paste your abstract here.
+\hfill \break
+\hfill \break
+\textbf{Keywords:} Word, lower case, word
+\hfill \break
+\noindent
+\rule{\textwidth}{0.4pt}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section*{Introduction}
+Type or paste your introduction here as prescribed by the journal’s instructions for authors. Type or paste your introduction here as prescribed by the journal’s instructions for authors. Type or paste your introduction here as prescribed by the journal’s instructions for authors. Type or paste your introduction here as prescribed by the journal’s instructions for authors. Type or paste your introduction here as prescribed by the journal’s instructions for authors.
+Type or paste your introduction here as prescribed by the journal’s instructions for authors. Type or paste your introduction here as prescribed by the journal’s instructions for authors. Type or paste your introduction here as prescribed by the journal’s instructions for authors. Type or paste your introduction here as prescribed by the journal’s instructions for authors. Type or paste your introduction here as prescribed by the journal’s instructions for authors. 
+Type or paste your introduction here as prescribed by the journal’s instructions for authors. Type or paste your introduction here as prescribed by the journal’s instructions for authors. Type or paste your introduction here as prescribed by the journal’s instructions for authors. Type or paste your introduction here as prescribed by the journal’s instructions for authors. Type or paste your introduction here as prescribed by the journal’s instructions for authors. 
+%\addtolength\topmargin{0.7in} % Reduce extra margin from TOP for title page
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section*{Materials and Methods}
+Type or paste your materials (source, location/supplier name) or machines (including model no., country of origin) here as prescribed by the journal’s instructions for authors.
+Type or paste your methods applied here as prescribed by the journal’s instructions for authors.
+\subsection*{Level 2 heading}
+
+\begin{equation} 
+\label{eu_eqn}
+e^{\pi i} + 1 = 0
+\end{equation}
+\subsubsection*{Level 3 heading}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section*{Results}
+Type or paste your results here as prescribed by the journal’s instructions for authors. Avoid redundant data that from the tables or illustrations.  Type or paste your results here as prescribed by the journal’s instructions for authors. Type or paste your results here as prescribed by the journal’s instructions for authors (Table~\ref{tb-label1}). Type or paste your results here as prescribed by the journal’s instructions for authors. Type or paste your results here as prescribed by the journal’s instructions for authors.  
+\captionsetup{justification=justified, singlelinecheck=off,labelfont=bf}
+\begin{table}[ht]
+
+    \centering
+    \caption{My caption}
+    \label{tb-label1}
+    \begin{tabularx}{\linewidth}{l*{5}{X}}
+    \hline
+    Word & Population & Area (Acre) & \multicolumn{3}{c}{Estimated waste generation}\\
+    \cline{4-6}
+    No. & & & Kg/capita/day & Kg/day & Percent\\
+   \hline
+    
+    1 & 18,250 & 747 & 0.27 & 4,928 & 31\\
+    2 & 9,500 & 38 & 0.29 & 2,755 & 17\\
+    3 & 12,200 & 181 & 0.15 & 1,830 & 12\\
+    \hline
+    Total & 103,903 & 3,316 & 0.15 & 15,700 & 100\\
+    \hline
+    \multicolumn{6}{l}{\footnotesize{Here is a footnote.}} \\
+    \end{tabularx}
+    
+\end{table}
+Type or paste your results here as prescribed by the journal’s instructions for authors. Type or paste your results here as prescribed by the journal’s instructions for authors. Type or paste your results here as prescribed by the journal’s instructions for authors. Type or paste your results here as prescribed by the journal’s instructions for authors (Figure 1). Type or paste your results here as prescribed by the journal’s instructions for authors. 
+\begin{figure}[htbp]
+	\centering
+	\includegraphics[width=.5\linewidth]{Figures/sample-figure.png}
+	\caption{Type your title here. Obtain permission and include the acknowledgement required by the copyright holder if a figure is being reproduced from another source.}
+	\label{fig-lable1}
+\end{figure}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section*{Discussions}
+Type or paste your discussion here as prescribed by the journal’s instructions for authors. Type or paste your discussion here as prescribed by the journal’s instructions for authors.	 Type or paste your discussion here as prescribed by the journal’s instructions for authors. Type or paste your discussion here as prescribed by the journal’s instructions for authors. Type or paste your discussion here as prescribed by the journal’s instructions for authors.
+Type or paste your discussion here as prescribed by the journal’s instructions for authors. Type or paste your discussion here as prescribed by the journal’s instructions for authors.	 Type or paste your discussion here as prescribed by the journal’s instructions for authors. Type or paste your discussion here as prescribed by the journal’s instructions for authors. Type or paste your discussion here as prescribed by the journal’s instructions for authors.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section*{Conclusion}
+In this part, authors should conclude the significance of the study, emphasize its value and state expectation on future studies that may need to be carried out. In details, it may include summary of key findings, strengths and limitations of the study, controversies raised by this study, and future research directions, etc.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section*{Acknowledgement}
+Type or paste your Acknowledgement here as prescribed by the journal’s instructions for authors. This section is not added if the author does not have anyone to acknowledge.
+
+\section*{References}
+Please follow the \textbf{APA 7th edition} style for your references that is available at https://guides.unitec.ac.nz/apareferencing. The author should follow APA 7th edition reference style both in inside text and reference. Here is a sample to cite references (\cite{atanu2022}).
+
+\printbibliography
+\end{document}
+ 

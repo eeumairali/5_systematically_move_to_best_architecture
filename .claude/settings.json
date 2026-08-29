@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(jupyter kernelspec *)",
+      "Bash(conda env *)",
+      "PowerShell(jupyter kernelspec list 2>&1)",
+      "PowerShell(conda env list 2>&1)",
+      "Bash(python -c ' *)",
+      "Bash(find \"/c/Users/eeuma/miniconda3/envs/dl_pt_win_env\" -iname \"libiomp5md.dll\" 2>/dev/null)",
+      "Read(//c/Users/eeuma/miniconda3/envs/dl_pt_win_env/**)",
+      "Bash(\"/c/Users/eeuma/miniconda3/envs/dl_pt_win_env/python.exe\" -m pip list)",
+      "Read(//c/Users/eeuma/miniconda3/envs/dl_pt_win_env/conda-meta/**)",
+      "Bash(awk '{print $1}')"
+    ]
+  }
+}
