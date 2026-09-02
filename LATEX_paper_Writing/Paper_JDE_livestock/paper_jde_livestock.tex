@@ -97,8 +97,38 @@ Type or paste your introduction here as prescribed by the journal’s instructio
 %\addtolength\topmargin{0.7in} % Reduce extra margin from TOP for title page
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section*{Materials and Methods}
-Type or paste your materials (source, location/supplier name) or machines (including model no., country of origin) here as prescribed by the journal’s instructions for authors.
-Type or paste your methods applied here as prescribed by the journal’s instructions for authors.
+Initially for Writing a better Comparison of unified architecture of detection and embedding for livestock ATRW dataset is chosen.
+The ATRW Dataset is a large-scale dataset for animal re-identification, which contains images of various animal species captured in the wild.
+
+\subsection*{Dataset}
+The Amur Tiger Re-identification in the Wild (ATRW) dataset was used to evaluate the unified detection-and-embedding architecture. The dataset is organized into two subsets: a \textit{detection} subset, providing bounding-box annotations for localizing tigers in camera-trap imagery, and a \textit{re-identification (re-ID)} subset, providing identity and keypoint annotations for distinguishing individual tigers by their unique stripe patterns.
+
+The detection subset contains 4,413 images in total, split into a trainval partition of 2,762 images (further divided into 2,485 images for training and 277 images for validation) and a held-out test partition of 1,651 unannotated images used for detection evaluation. Bounding-box annotations for the 2,762 trainval images are provided in PASCAL VOC XML format.
+
+The re-ID subset contains 5,156 images. The training pool comprises 3,392 images, of which 1,887 images are identity-labeled, covering 107 unique tiger identities, while the remaining 1,505 images are unlabeled and used as an additional gallery pool for the plain and cross-camera evaluation protocols. The test partition consists of 1,764 unlabeled query images used for identity-retrieval evaluation. Body-part keypoint annotations, following the MSCOCO keypoint format, are provided for all labeled training images and all test images.
+
+\captionsetup{justification=justified, singlelinecheck=off,labelfont=bf}
+\begin{table}[ht]
+    \centering
+    \caption{Composition of the ATRW dataset used in this study}
+    \label{tb-atrw}
+    \begin{tabularx}{\linewidth}{l l r X}
+    \hline
+    Task & Split & Images & Notes\\
+    \hline
+     & Train & 2,485 & Subset of trainval; bounding-box annotations (PASCAL VOC XML)\\
+    Detection & Validation & 277 & Subset of trainval; bounding-box annotations (PASCAL VOC XML)\\
+     & Test & 1,651 & Unannotated; used for detection evaluation only\\
+    \hline
+     & Train (labeled) & 1,887 & 107 unique tiger identities; MSCOCO-format keypoints\\
+    Re-identification & Train (gallery pool) & 1,505 & Unlabeled; additional images for plain/cross-camera evaluation\\
+     & Test (query) & 1,764 & Unlabeled query images; MSCOCO-format keypoints\\
+    \hline
+    \end{tabularx}
+\end{table}
+
+On disk, the detection subset totals approximately 3.6 GB (2,762 trainval and 1,651 test images), while the re-ID subset totals approximately 239 MB (3,392 train and 1,764 test images), giving a combined dataset size of roughly 3.84 GB used for training and benchmarking the unified detection-and-embedding architecture.
+
 \subsection*{Level 2 heading}
 
 \begin{equation} 
