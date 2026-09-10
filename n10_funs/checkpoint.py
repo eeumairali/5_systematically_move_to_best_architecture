@@ -28,7 +28,7 @@ def save_checkpoint(model, history):
     torch.save(checkpoint, temp_checkpoint_path)
     try:
         verified = torch.load(temp_checkpoint_path, map_location="cpu", weights_only=False)
-        if not verified.get("model_state") or not verified.get("history"):
+        if "model_state" not in verified or not verified["model_state"] or "history" not in verified:
             raise RuntimeError("checkpoint verification failed: missing model state or history")
         temp_checkpoint_path.replace(checkpoint_path)
     finally:
