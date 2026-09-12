@@ -1,221 +1,137 @@
-"""Standalone dataset loaders for the mmCows benchmark (detection + ReID), with a
-quick visual sanity check when run directly.
+"""Dataset and CenterNet-style target preparation for the JDE pipeline."""
 
-Label format (one .txt per image, YOLO-style): "identity cx cy w h" with cx, cy, w, h
-normalized to [0, 1] and identity in 1..N_IDENTITIES (mmCows has no separate "class",
-every box is a cow; the identity id doubles as the label).
-"""
-import random
 from pathlib import Path
 
-import matplotlib.patches as patches
-import matplotlib.pyplot as plt
-from PIL import Image
+import numpy as np
+import torch
+from PIL import Image, ImageFile
 from torch.utils.data import Dataset
 
-from n10_funs.config import CAMERAS, IMAGE_ROOT, LABEL_ROOT
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-WEBOTS_ROOT = Path("benchmarks/webots_multipleCows_location_Identity")
-WEBOTS_IMAGE_ROOT = WEBOTS_ROOT / "images"
-WEBOTS_LABEL_ROOT = WEBOTS_ROOT / "labels"
-WEBOTS_CLASSES_FILE = WEBOTS_ROOT / "classes.txt"
+MEAN = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
+STD = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
+
+
+def read_classes(data_root):
+    path = Path(data_root) / "classes.txt"
+    return [line.strip() for line in path.read_text().splitlines() if line.strip()] if path.exists() else []
 
 
 def parse_label_file(label_path):
-    """Read one 'identity cx cy w h' label file into a list of tuples."""
     boxes = []
-    if not label_path.exists():
-        return boxes
-    for line in label_path.read_text().splitlines():
-        parts = line.split()
-        if len(parts) < 5:
+    for line in Path(label_path).read_text().splitlines():
+        values = line.split()
+        if len(values) < 5:
             continue
-        identity = int(parts[0])
-        cx, cy, w, h = (float(v) for v in parts[1:5])
-        boxes.append((identity, cx, cy, w, h))
+        identity, cx, cy, width, height = values[:5]
+        boxes.append((int(identity), float(cx), float(cy), float(width), float(height)))
     return boxes
 
 
-def index_camera(camera):
-    """List (image_path, label_path) pairs for one camera folder."""
-    image_dir = IMAGE_ROOT / camera
-    label_dir = LABEL_ROOT / camera
-    pairs = []
-    for label_path in sorted(label_dir.glob("*.txt")):
-        image_path = image_dir / (label_path.stem + ".jpg")
-        if image_path.exists():
-            pairs.append((image_path, label_path))
-    return pairs
+def index_split(data_root, split):
+    """Return labelled image pairs, honoring a YOLO split file when present."""
+    data_root = Path(data_root)
+    image_root, label_root = data_root / "images", data_root / "labels"
+    split_file = data_root / f"{split}.txt"
+    if split_file.exists():
+        names = [Path(line.strip()).name for line in split_file.read_text().splitlines() if line.strip()]
+    else:
+        names = sorted(path.name for path in image_root.glob("*.jpg"))
+    return [
+        (image_root / name, label_root / f"{Path(name).stem}.txt")
+        for name in names
+        if (image_root / name).exists() and (label_root / f"{Path(name).stem}.txt").exists()
+    ]
 
 
-class MmCowsDetectionDataset(Dataset):
-    """Detection dataset: each item is (PIL image, list of (identity, cx, cy, w, h))."""
+def _draw_gaussian(heatmap, center_x, center_y, radius):
+    radius = max(0, int(radius))
+    sigma = max(radius / 3.0, 0.5)
+    height, width = heatmap.shape
+    left, right = min(center_x, radius), min(width - center_x, radius + 1)
+    top, bottom = min(center_y, radius), min(height - center_y, radius + 1)
+    if left + right <= 0 or top + bottom <= 0:
+        return
+    ys = torch.arange(-top, bottom).float().view(-1, 1)
+    xs = torch.arange(-left, right).float().view(1, -1)
+    gaussian = torch.exp(-(xs.square() + ys.square()) / (2 * sigma * sigma))
+    region = heatmap[center_y - top:center_y + bottom, center_x - left:center_x + right]
+    torch.maximum(region, gaussian, out=region)
 
-    def __init__(self, cameras=CAMERAS):
-        self.samples = []
-        for camera in cameras:
-            self.samples.extend(index_camera(camera))
+
+def _gaussian_radius(height, width, overlap=0.7):
+    a1, b1, c1 = 1.0, height + width, width * height * (1 - overlap) / (1 + overlap)
+    a2, b2, c2 = 4.0, 2 * (height + width), (1 - overlap) * width * height
+    a3, b3, c3 = 4 * overlap, -2 * overlap * (height + width), (overlap - 1) * width * height
+    roots = [
+        (b1 - (b1 * b1 - 4 * a1 * c1) ** 0.5) / (2 * a1),
+        (b2 - (b2 * b2 - 4 * a2 * c2) ** 0.5) / (2 * a2),
+        (b3 + (b3 * b3 - 4 * a3 * c3) ** 0.5) / (2 * a3),
+    ]
+    return max(0.0, min(roots))
+
+
+def make_targets(boxes, image_size, stride, max_identities):
+    image_width, image_height = image_size
+    feature_width, feature_height = image_width // stride, image_height // stride
+    heatmap = torch.zeros(1, feature_height, feature_width)
+    centers, sizes, offsets, identities = [], [], [], []
+    for identity, cx, cy, width, height in boxes:
+        identity = max(0, min(identity, max_identities - 1))
+        feature_x, feature_y = cx * image_width / stride, cy * image_height / stride
+        center_x, center_y = int(feature_x), int(feature_y)
+        if not (0 <= center_x < feature_width and 0 <= center_y < feature_height):
+            continue
+        radius = _gaussian_radius(height * image_height / stride, width * image_width / stride)
+        _draw_gaussian(heatmap[0], center_x, center_y, radius)
+        centers.append((center_x, center_y))
+        sizes.append((width * image_width / stride, height * image_height / stride))
+        offsets.append((feature_x - center_x, feature_y - center_y))
+        identities.append(identity)
+    count = max(len(centers), 1)
+    return {
+        "hm": heatmap,
+        "centers": torch.tensor(centers or [(0, 0)], dtype=torch.long),
+        "wh": torch.tensor(sizes or [(0.0, 0.0)], dtype=torch.float32),
+        "reg": torch.tensor(offsets or [(0.0, 0.0)], dtype=torch.float32),
+        "ids": torch.tensor(identities or [0], dtype=torch.long),
+        "mask": torch.tensor([True] * len(centers) + [False] * (count - len(centers)), dtype=torch.bool),
+    }
+
+
+class WebotsJDEDataset(Dataset):
+    """Webots images with ``identity cx cy width height`` YOLO labels."""
+
+    def __init__(self, data_root, split, image_size=(640, 400), stride=4, max_identities=None):
+        self.data_root = Path(data_root)
+        self.image_size = image_size
+        self.stride = stride
+        self.class_names = read_classes(self.data_root)
+        self.max_identities = max_identities or max(len(self.class_names), 1)
+        self.samples = [(image, parse_label_file(label)) for image, label in index_split(self.data_root, split)]
         if not self.samples:
-            raise RuntimeError(f"No labelled frames found under {IMAGE_ROOT} / {LABEL_ROOT}")
+            raise RuntimeError(f"No labelled images found for split '{split}' under {self.data_root}")
 
     def __len__(self):
         return len(self.samples)
 
-    def __getitem__(self, idx):
-        img_path, label_path = self.samples[idx]
-        image = Image.open(img_path).convert("RGB")
-        boxes = parse_label_file(label_path)
-        return image, boxes
+    def __getitem__(self, index):
+        image_path, boxes = self.samples[index]
+        image = Image.open(image_path).convert("RGB").resize(self.image_size)
+        tensor = torch.from_numpy(np.array(image, copy=True)).permute(2, 0, 1).float() / 255.0
+        tensor = (tensor - MEAN) / STD
+        return tensor, make_targets(boxes, self.image_size, self.stride, self.max_identities)
 
 
-class MmCowsReIDDataset(Dataset):
-    """ReID dataset: crops each labelled box out of its frame and returns (crop, identity - 1)."""
-
-    def __init__(self, cameras=CAMERAS, crop_size=(128, 128)):
-        self.crop_size = crop_size
-        self.entries = []  # (img_path, box)
-        for camera in cameras:
-            for img_path, label_path in index_camera(camera):
-                for box in parse_label_file(label_path):
-                    self.entries.append((img_path, box))
-        if not self.entries:
-            raise RuntimeError(f"No labelled boxes found under {IMAGE_ROOT} / {LABEL_ROOT}")
-
-    def __len__(self):
-        return len(self.entries)
-
-    def __getitem__(self, idx):
-        img_path, (identity, cx, cy, w, h) = self.entries[idx]
-        image = Image.open(img_path).convert("RGB")
-        img_w, img_h = image.size
-        x1 = max(0, int((cx - w / 2) * img_w))
-        y1 = max(0, int((cy - h / 2) * img_h))
-        x2 = min(img_w, int((cx + w / 2) * img_w))
-        y2 = min(img_h, int((cy + h / 2) * img_h))
-        crop = image.crop((x1, y1, x2, y2)).resize(self.crop_size)
-        return crop, identity - 1  # 1..N -> 0..N-1
-
-
-def load_class_names(classes_file):
-    """Read a YOLO-style classes.txt (one name per line, line index == class id)."""
-    return [line.strip() for line in classes_file.read_text().splitlines() if line.strip()]
-
-
-def index_flat(image_dir, label_dir, image_ext=".jpg"):
-    """List (image_path, label_path) pairs for a flat images/ + labels/ folder pair
-    (no per-camera subfolders, e.g. the webots benchmark)."""
-    pairs = []
-    for label_path in sorted(label_dir.glob("*.txt")):
-        image_path = image_dir / (label_path.stem + image_ext)
-        if image_path.exists():
-            pairs.append((image_path, label_path))
-    return pairs
-
-
-class WebotsDetectionDataset(Dataset):
-    """Detection dataset for the webots multi-cow/buffalo benchmark: each item is
-    (PIL image, list of (identity, cx, cy, w, h)). identity is already 0-indexed,
-    matching the line numbers in classes.txt."""
-
-    def __init__(self, image_root=WEBOTS_IMAGE_ROOT, label_root=WEBOTS_LABEL_ROOT):
-        self.samples = index_flat(image_root, label_root)
-        self.class_names = load_class_names(WEBOTS_CLASSES_FILE) if WEBOTS_CLASSES_FILE.exists() else None
-        if not self.samples:
-            raise RuntimeError(f"No labelled frames found under {image_root} / {label_root}")
-
-    def __len__(self):
-        return len(self.samples)
-
-    def __getitem__(self, idx):
-        img_path, label_path = self.samples[idx]
-        image = Image.open(img_path).convert("RGB")
-        boxes = parse_label_file(label_path)
-        return image, boxes
-
-
-class WebotsReIDDataset(Dataset):
-    """ReID dataset for the webots benchmark: crops each labelled box out of its frame
-    and returns (crop, identity), identity already 0-indexed."""
-
-    def __init__(self, image_root=WEBOTS_IMAGE_ROOT, label_root=WEBOTS_LABEL_ROOT, crop_size=(128, 128)):
-        self.crop_size = crop_size
-        self.class_names = load_class_names(WEBOTS_CLASSES_FILE) if WEBOTS_CLASSES_FILE.exists() else None
-        self.entries = []  # (img_path, box)
-        for img_path, label_path in index_flat(image_root, label_root):
-            for box in parse_label_file(label_path):
-                self.entries.append((img_path, box))
-        if not self.entries:
-            raise RuntimeError(f"No labelled boxes found under {image_root} / {label_root}")
-
-    def __len__(self):
-        return len(self.entries)
-
-    def __getitem__(self, idx):
-        img_path, (identity, cx, cy, w, h) = self.entries[idx]
-        image = Image.open(img_path).convert("RGB")
-        img_w, img_h = image.size
-        x1 = max(0, int((cx - w / 2) * img_w))
-        y1 = max(0, int((cy - h / 2) * img_h))
-        x2 = min(img_w, int((cx + w / 2) * img_w))
-        y2 = min(img_h, int((cy + h / 2) * img_h))
-        crop = image.crop((x1, y1, x2, y2)).resize(self.crop_size)
-        return crop, identity
-
-
-def plot_detection_sample(image, boxes, ax=None, title=None, class_names=None):
-    """Draw an image with its YOLO-normalized boxes, colored by identity."""
-    if ax is None:
-        _, ax = plt.subplots(figsize=(8, 5))
-    img_w, img_h = image.size
-    ax.imshow(image)
-    cmap = plt.colormaps.get_cmap("tab20")
-    for identity, cx, cy, w, h in boxes:
-        x1 = (cx - w / 2) * img_w
-        y1 = (cy - h / 2) * img_h
-        rect = patches.Rectangle(
-            (x1, y1), w * img_w, h * img_h,
-            linewidth=2, edgecolor=cmap(identity % 20), facecolor="none",
-        )
-        ax.add_patch(rect)
-        label = class_names[identity] if class_names else f"C{identity:02d}"
-        ax.text(x1, max(y1 - 4, 0), label, color=cmap(identity % 20), fontsize=8, weight="bold")
-    ax.set_title(title or f"{len(boxes)} boxes")
-    ax.axis("off")
-    return ax
-
-
-def plot_reid_grid(reid_dataset, n=12, class_names=None):
-    """Show a grid of random ReID crops with their identity label."""
-    class_names = class_names if class_names is not None else getattr(reid_dataset, "class_names", None)
-    idxs = random.sample(range(len(reid_dataset)), min(n, len(reid_dataset)))
-    cols = 4
-    rows = (len(idxs) + cols - 1) // cols
-    fig, axes = plt.subplots(rows, cols, figsize=(cols * 2.5, rows * 2.5))
-    axes = axes.flatten() if rows * cols > 1 else [axes]
-    for ax, idx in zip(axes, idxs):
-        crop, identity = reid_dataset[idx]
-        ax.imshow(crop)
-        ax.set_title(class_names[identity] if class_names else f"C{identity + 1:02d}")
-        ax.axis("off")
-    for ax in axes[len(idxs):]:
-        ax.axis("off")
-    fig.tight_layout()
-    return fig
-
-
-def demo(det_ds, reid_ds, name):
-    print(f"[{name}] detection dataset: {len(det_ds)} frames")
-    print(f"[{name}] reid dataset:      {len(reid_ds)} crops")
-
-    image, boxes = det_ds[random.randrange(len(det_ds))]
-    class_names = getattr(det_ds, "class_names", None)
-    plot_detection_sample(image, boxes, title=f"{name}: sample frame, {len(boxes)} boxes", class_names=class_names)
-    plt.show()
-
-    plot_reid_grid(reid_ds, n=12)
-    plt.show()
-
-
-if __name__ == "__main__":
-    demo(MmCowsDetectionDataset(), MmCowsReIDDataset(), name="mmCows")
-    demo(WebotsDetectionDataset(), WebotsReIDDataset(), name="webots")
+def jde_collate(batch):
+    images, targets = zip(*batch)
+    max_boxes = max(target["centers"].shape[0] for target in targets)
+    result = {"hm": torch.stack([target["hm"] for target in targets])}
+    for key, dtype in (("centers", torch.long), ("wh", torch.float32), ("reg", torch.float32), ("ids", torch.long), ("mask", torch.bool)):
+        padded = torch.zeros(len(targets), max_boxes, *targets[0][key].shape[1:], dtype=dtype)
+        for row, target in enumerate(targets):
+            length = target[key].shape[0]
+            padded[row, :length] = target[key]
+        result[key] = padded
+    return torch.stack(images), result

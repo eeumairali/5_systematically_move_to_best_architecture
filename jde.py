@@ -1,161 +1,143 @@
+"""JDE model, joint losses, validation, and detailed epoch training."""
+
+import csv
+import time
+from pathlib import Path
+
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-import torchvision
+from torch import nn
+
+from n10_funs.model import JointBackbone
 
 
-class BackBone:
-    """backbone for JDE model"""
-    def __init__(self):
-        self.backbone = None
-    def make_backbone(self):
-        raise NotImplementedError("make_backbone method should be implemented in subclass")
+def _head(in_channels, hidden_channels, out_channels):
+    return nn.Sequential(nn.Conv2d(in_channels, hidden_channels, 3, padding=1), nn.ReLU(inplace=True), nn.Conv2d(hidden_channels, out_channels, 1))
 
 
-class Architecture(BackBone):
-    """main architecture for JDE model"""
-    def __init__(self):
-        super(Architecture, self).__init__()
-        self.make_backbone()
+class JDEModel(nn.Module):
+    """Shared backbone with heatmap, box-regression, and identity heads."""
 
-    def make_neck(self):
-        raise NotImplementedError("make_neck method should be implemented in subclass")
-    def make_head_detection(self):
-        raise NotImplementedError("make_head_detection method should be implemented in subclass")
-    def make_head_embedding(self):
-        raise NotImplementedError("make_head_embedding method should be implemented in subclass")
+    def __init__(self, n_identities, reid_dim=128, base_channels=32):
+        super().__init__()
+        self.backbone = JointBackbone(base_ch=base_channels)
+        channels = self.backbone.out_channels
+        self.hm_head = _head(channels, 64, 1)
+        self.wh_head = _head(channels, 64, 2)
+        self.reg_head = _head(channels, 64, 2)
+        self.id_head = _head(channels, 64, reid_dim)
+        self.identity_classifier = nn.Linear(reid_dim, n_identities)
+        self.log_vars = nn.Parameter(torch.zeros(3))
+        self.hm_head[-1].bias.data.fill_(-2.19)
 
+    def forward(self, images):
+        features = self.backbone(images)
+        return {"hm": torch.sigmoid(self.hm_head(features)), "wh": self.wh_head(features), "reg": self.reg_head(features), "id": self.id_head(features)}
 
-class JDEModel(Architecture, nn.Module):
-    """
-    JDE / FairMOT-style model: shared backbone + neck producing a single
-    stride-4 feature map, with three CenterNet-style heads:
-      - hm  : object center heatmap (num_classes)
-      - wh  : box width/height regression (2)
-      - reg : sub-pixel center offset (2)
-    plus a ReID embedding head (id) used for joint detection + tracking.
-    """
-
-    def __init__(self, num_classes=1, reid_dim=128, head_conv=256):
-        self.num_classes = num_classes
-        self.reid_dim = reid_dim
-        self.head_conv = head_conv
-        nn.Module.__init__(self)
-        Architecture.__init__(self)
-        self.make_neck()
-        self.make_head_detection()
-        self.make_head_embedding()
-
-    # ---------------- backbone ----------------
-    def make_backbone(self):
-        resnet = torchvision.models.resnet34(weights=None)
-        self.stem = nn.Sequential(resnet.conv1, resnet.bn1, resnet.relu, resnet.maxpool)
-        self.layer1 = resnet.layer1   # stride 4,  64ch
-        self.layer2 = resnet.layer2   # stride 8,  128ch
-        self.layer3 = resnet.layer3   # stride 16, 256ch
-        self.layer4 = resnet.layer4   # stride 32, 512ch
-        self.backbone = [self.stem, self.layer1, self.layer2, self.layer3, self.layer4]
-
-    # ---------------- neck (FPN-style upsampling fusion down to stride 4) ----------------
-    def make_neck(self):
-        def upsample_block(in_ch, out_ch):
-            return nn.Sequential(
-                nn.Conv2d(in_ch, out_ch, kernel_size=1, bias=False),
-                nn.BatchNorm2d(out_ch),
-                nn.ReLU(inplace=True),
-            )
-
-        self.lat4 = upsample_block(512, 256)
-        self.lat3 = upsample_block(256, 256)
-        self.lat2 = upsample_block(128, 256)
-        self.lat1 = upsample_block(64, 256)
-
-        self.smooth3 = nn.Conv2d(256, 256, kernel_size=3, padding=1, bias=False)
-        self.smooth2 = nn.Conv2d(256, 256, kernel_size=3, padding=1, bias=False)
-        self.smooth1 = nn.Conv2d(256, 256, kernel_size=3, padding=1, bias=False)
-
-        self.neck_out_channels = 256
-
-    def _fuse_neck(self, c1, c2, c3, c4):
-        p4 = self.lat4(c4)
-        p3 = self.lat3(c3) + F.interpolate(p4, size=c3.shape[-2:], mode="nearest")
-        p3 = self.smooth3(p3)
-        p2 = self.lat2(c2) + F.interpolate(p3, size=c2.shape[-2:], mode="nearest")
-        p2 = self.smooth2(p2)
-        p1 = self.lat1(c1) + F.interpolate(p2, size=c1.shape[-2:], mode="nearest")
-        p1 = self.smooth1(p1)
-        return p1  # stride 4 feature map
-
-    # ---------------- heads ----------------
-    def _make_head(self, out_channels):
-        head = nn.Sequential(
-            nn.Conv2d(self.neck_out_channels, self.head_conv, kernel_size=3, padding=1, bias=True),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(self.head_conv, out_channels, kernel_size=1, stride=1, padding=0, bias=True),
-        )
-        return head
-
-    def make_head_detection(self):
-        self.hm = self._make_head(self.num_classes)
-        self.wh = self._make_head(2)
-        self.reg = self._make_head(2)
-        # heatmap bias init so training starts from low foreground probability
-        self.hm[-1].bias.data.fill_(-2.19)
-
-    def make_head_embedding(self):
-        self.id_head = self._make_head(self.reid_dim)
-        # learnable per-task uncertainty weights, as in FairMOT's loss balancing
-        self.s_det = nn.Parameter(-1.85 * torch.ones(1))
-        self.s_id = nn.Parameter(-1.05 * torch.ones(1))
-
-    # ---------------- forward / train / infer ----------------
-    def forward(self, x):
-        x = self.stem(x)
-        c1 = self.layer1(x)
-        c2 = self.layer2(c1)
-        c3 = self.layer3(c2)
-        c4 = self.layer4(c3)
-
-        feat = self._fuse_neck(c1, c2, c3, c4)
-
-        out = {
-            "hm": torch.sigmoid(self.hm(feat)),
-            "wh": self.wh(feat),
-            "reg": self.reg(feat),
-            "id": self.id_head(feat),
-        }
-        return out
-
-    def compute_loss(self, outputs, targets, det_loss_fn, id_loss_fn):
-        """
-        det_loss_fn(outputs, targets) -> scalar detection loss (focal + wh/reg L1)
-        id_loss_fn(outputs, targets)  -> scalar ReID classification/embedding loss
-        Combines them with FairMOT's uncertainty-based weighting.
-        """
-        det_loss = det_loss_fn(outputs, targets)
-        id_loss = id_loss_fn(outputs, targets)
-        loss = (
-            torch.exp(-self.s_det) * det_loss
-            + torch.exp(-self.s_id) * id_loss
-            + (self.s_det + self.s_id)
-        ) * 0.5
-        return loss, {"det_loss": det_loss.detach(), "id_loss": id_loss.detach()}
-
-    def backpropogation(self, loss, optimizer):
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-    @torch.no_grad()
-    def inference(self, x):
-        self.eval()
-        return self.forward(x)
+    @staticmethod
+    def gather(feature_map, centers):
+        _, channels, _, width = feature_map.shape
+        flattened = feature_map.permute(0, 2, 3, 1).reshape(feature_map.shape[0], -1, channels)
+        indices = centers[..., 1] * width + centers[..., 0]
+        return torch.gather(flattened, 1, indices.unsqueeze(-1).expand(-1, -1, channels))
 
 
-if __name__ == "__main__":
-    model = JDEModel(num_classes=1, reid_dim=128, head_conv=256)
-    print(model)
-    x = torch.randn(1, 3, 512, 512)
-    outputs = model(x)
-    for k, v in outputs.items():
-        print(k, v.shape) 
+def focal_loss(prediction, target):
+    prediction = prediction[:, 0].clamp(1e-6, 1 - 1e-6)
+    positive = (target[:, 0] == 1).float()
+    negative = (target[:, 0] < 1).float()
+    positive_loss = -positive * (1 - prediction).pow(2) * prediction.log()
+    negative_loss = -negative * (1 - target[:, 0]).pow(4) * prediction.pow(2) * (1 - prediction).log()
+    return (positive_loss.sum() + negative_loss.sum()) / positive.sum().clamp(min=1)
+
+
+def joint_loss(model, outputs, targets):
+    heatmap_loss = focal_loss(outputs["hm"], targets["hm"])
+    batch_size, _, height, width = outputs["reg"].shape
+    flat_reg = outputs["reg"].permute(0, 2, 3, 1).reshape(batch_size, height * width, 2)
+    flat_wh = outputs["wh"].permute(0, 2, 3, 1).reshape(batch_size, height * width, 2)
+    indices = (targets["centers"][..., 1] * width + targets["centers"][..., 0]).clamp(0, height * width - 1)
+    gathered_reg = torch.gather(flat_reg, 1, indices.unsqueeze(-1).expand(-1, -1, 2))
+    gathered_wh = torch.gather(flat_wh, 1, indices.unsqueeze(-1).expand(-1, -1, 2))
+    mask = targets["mask"]
+    offset_loss = F.l1_loss(gathered_reg[mask], targets["reg"][mask]) if mask.any() else outputs["reg"].sum() * 0
+    size_loss = F.l1_loss(gathered_wh[mask], targets["wh"][mask]) if mask.any() else outputs["wh"].sum() * 0
+    embeddings = model.gather(outputs["id"], targets["centers"])[mask]
+    identity_loss = F.cross_entropy(model.identity_classifier(embeddings), targets["ids"][mask]) if embeddings.numel() else outputs["id"].sum() * 0
+    detection_loss = offset_loss + 0.1 * size_loss
+    components = torch.stack([heatmap_loss, detection_loss, identity_loss])
+    total = (torch.exp(-model.log_vars) * components + model.log_vars).mean()
+    values = {"total": float(total.detach()), "heatmap": float(heatmap_loss.detach()), "offset": float(offset_loss.detach()), "size": float(size_loss.detach()), "detection": float(detection_loss.detach()), "identity": float(identity_loss.detach())}
+    return total, values
+
+
+def _move_targets(targets, device):
+    return {key: value.to(device) for key, value in targets.items()}
+
+
+@torch.no_grad()
+def evaluate(model, loader, device):
+    model.eval()
+    totals = {key: 0.0 for key in ("total", "heatmap", "offset", "size", "detection", "identity")}
+    correct, count, batches = 0, 0, 0
+    for images, targets in loader:
+        images, targets = images.to(device), _move_targets(targets, device)
+        outputs = model(images)
+        _, values = joint_loss(model, outputs, targets)
+        for key in totals:
+            totals[key] += values[key]
+        embeddings = model.gather(outputs["id"], targets["centers"])[targets["mask"]]
+        if embeddings.numel():
+            predictions = model.identity_classifier(embeddings).argmax(1)
+            correct += int((predictions == targets["ids"][targets["mask"]]).sum())
+            count += int(targets["mask"].sum())
+        batches += 1
+    for key in totals:
+        totals[key] /= max(batches, 1)
+    totals["identity_accuracy"] = 100.0 * correct / max(count, 1)
+    return totals
+
+
+def fit(model, train_loader, val_loader, device, epochs, learning_rate, output_dir, grad_clip=5.0):
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(epochs, 1))
+    history_path = output_dir / "history.csv"
+    history = []
+    for epoch in range(1, epochs + 1):
+        started = time.perf_counter()
+        model.train()
+        running = {key: 0.0 for key in ("total", "heatmap", "offset", "size", "detection", "identity")}
+        correct, count, batches = 0, 0, 0
+        for images, targets in train_loader:
+            images, targets = images.to(device), _move_targets(targets, device)
+            optimizer.zero_grad(set_to_none=True)
+            outputs = model(images)
+            loss, values = joint_loss(model, outputs, targets)
+            loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+            optimizer.step()
+            for key in running:
+                running[key] += values[key]
+            embeddings = model.gather(outputs["id"], targets["centers"])[targets["mask"]]
+            if embeddings.numel():
+                correct += int((model.identity_classifier(embeddings).argmax(1) == targets["ids"][targets["mask"]]).sum())
+                count += int(targets["mask"].sum())
+            batches += 1
+        train_metrics = {key: value / max(batches, 1) for key, value in running.items()}
+        train_metrics["identity_accuracy"] = 100.0 * correct / max(count, 1)
+        val_metrics = evaluate(model, val_loader, device)
+        elapsed = time.perf_counter() - started
+        record = {"epoch": epoch, "train_total": train_metrics["total"], "train_heatmap": train_metrics["heatmap"], "train_detection": train_metrics["detection"], "train_offset": train_metrics["offset"], "train_size": train_metrics["size"], "train_identity": train_metrics["identity"], "train_id_accuracy": train_metrics["identity_accuracy"], "val_total": val_metrics["total"], "val_heatmap": val_metrics["heatmap"], "val_detection": val_metrics["detection"], "val_identity": val_metrics["identity"], "val_id_accuracy": val_metrics["identity_accuracy"], "learning_rate": optimizer.param_groups[0]["lr"], "seconds": elapsed}
+        history.append(record)
+        with history_path.open("w", newline="") as file:
+            writer = csv.DictWriter(file, fieldnames=record.keys())
+            writer.writeheader()
+            writer.writerows(history)
+        torch.save({"model": model.state_dict(), "optimizer": optimizer.state_dict(), "epoch": epoch, "metrics": record}, output_dir / "latest.pt")
+        print(f"Epoch {epoch:03d}/{epochs:03d} | train total={record['train_total']:.4f} hm={record['train_heatmap']:.4f} det={record['train_detection']:.4f} id={record['train_identity']:.4f} acc={record['train_id_accuracy']:.2f}% | val total={record['val_total']:.4f} hm={record['val_heatmap']:.4f} det={record['val_detection']:.4f} id={record['val_identity']:.4f} acc={record['val_id_accuracy']:.2f}% | lr={record['learning_rate']:.2e} time={elapsed:.1f}s")
+        print("=" * 120)
+        scheduler.step()
+    torch.save(model.state_dict(), output_dir / "model.pt")
+    return history

@@ -1,6 +1,21 @@
-numpy
+# Conda environment: FairMOT
+# Python: 3.11 (torch==2.1.2 only ships wheels up to Python 3.11; this
+#   codebase's older DCNv2/numba/opencv deps have broader wheel support
+#   on 3.11 than on newer Python releases like 3.12/3.13)
+#
+# Setup (WSL2, GPU = NVIDIA RTX 4060, driver supports CUDA up to 13.2):
+#   conda create -n FairMOT python=3.11 -y
+#   conda activate FairMOT
+#   pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu121
+#
+# Note: plain `pip install -r requirements.txt` (no --extra-index-url) will
+# install the CPU-only build of torch/torchvision, since PyPI does not host
+# the CUDA wheels. The --extra-index-url flag above is required for GPU support.
+
+numpy<2  # torch==2.1.2 was compiled against NumPy 1.x; NumPy 2.x breaks its C extensions
 pandas
 streamlit
-torch
-torchvision
+matplotlib
+torch==2.1.2
+torchvision==0.16.2
 Pillow
