@@ -1,6 +1,8 @@
 """JDE model, joint losses, validation, and detailed epoch training."""
 
 import csv
+import os
+import tempfile
 import time
 from pathlib import Path
 
@@ -75,6 +77,18 @@ def _move_targets(targets, device):
     return {key: value.to(device) for key, value in targets.items()}
 
 
+def _atomic_torch_save(value, path):
+    """Write a checkpoint through a temporary file so a crash cannot leave a partial file."""
+    path = Path(path)
+    with tempfile.NamedTemporaryFile(dir=path.parent, prefix=f".{path.name}.", delete=False) as file:
+        temporary_path = Path(file.name)
+    try:
+        torch.save(value, temporary_path)
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
 @torch.no_grad()
 def evaluate(model, loader, device):
     model.eval()
@@ -98,14 +112,48 @@ def evaluate(model, loader, device):
     return totals
 
 
-def fit(model, train_loader, val_loader, device, epochs, learning_rate, output_dir, grad_clip=5.0):
+def fit(model, train_loader, val_loader, device, epochs, learning_rate, output_dir, grad_clip=5.0, patience=5, resume=None):
+    if patience < 1:
+        raise ValueError("patience must be at least 1")
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(epochs, 1))
     history_path = output_dir / "history.csv"
+    best_path = output_dir / "best.pt"
     history = []
-    for epoch in range(1, epochs + 1):
+    best_val_total = float("inf")
+    best_epoch = 0
+    epochs_without_improvement = 0
+    best_state = None
+    start_epoch = 1
+    if resume is not None:
+        resume_path = output_dir / "latest.pt" if resume is True else Path(resume)
+        if not resume_path.exists():
+            raise FileNotFoundError(f"Resume checkpoint does not exist: {resume_path}")
+        checkpoint = torch.load(resume_path, map_location=device)
+        model.load_state_dict(checkpoint["model"])
+        optimizer.load_state_dict(checkpoint["optimizer"])
+        if "scheduler" in checkpoint:
+            scheduler.load_state_dict(checkpoint["scheduler"])
+        start_epoch = int(checkpoint["epoch"]) + 1
+        if history_path.exists():
+            with history_path.open(newline="") as file:
+                history = list(csv.DictReader(file))
+        if best_path.exists():
+            best_checkpoint = torch.load(best_path, map_location="cpu")
+            best_state = best_checkpoint["model"]
+            best_epoch = int(best_checkpoint["epoch"])
+            best_val_total = float(best_checkpoint["metrics"]["val_total"])
+            epochs_without_improvement = max(0, int(checkpoint["epoch"]) - best_epoch)
+        else:
+            best_epoch = int(checkpoint["epoch"])
+            best_val_total = float(checkpoint["metrics"]["val_total"])
+            epochs_without_improvement = 0
+            best_state = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
+            _atomic_torch_save(checkpoint, best_path)
+        print(f"Resuming from epoch {checkpoint['epoch']}; next epoch is {start_epoch}.")
+    for epoch in range(start_epoch, epochs + 1):
         started = time.perf_counter()
         model.train()
         running = {key: 0.0 for key in ("total", "heatmap", "offset", "size", "detection", "identity")}
@@ -135,9 +183,30 @@ def fit(model, train_loader, val_loader, device, epochs, learning_rate, output_d
             writer = csv.DictWriter(file, fieldnames=record.keys())
             writer.writeheader()
             writer.writerows(history)
-        torch.save({"model": model.state_dict(), "optimizer": optimizer.state_dict(), "epoch": epoch, "metrics": record}, output_dir / "latest.pt")
-        print(f"Epoch {epoch:03d}/{epochs:03d} | train total={record['train_total']:.4f} hm={record['train_heatmap']:.4f} det={record['train_detection']:.4f} id={record['train_identity']:.4f} acc={record['train_id_accuracy']:.2f}% | val total={record['val_total']:.4f} hm={record['val_heatmap']:.4f} det={record['val_detection']:.4f} id={record['val_identity']:.4f} acc={record['val_id_accuracy']:.2f}% | lr={record['learning_rate']:.2e} time={elapsed:.1f}s")
-        print("=" * 120)
+            file.flush()
+            os.fsync(file.fileno())
         scheduler.step()
-    torch.save(model.state_dict(), output_dir / "model.pt")
+        checkpoint = {"model": model.state_dict(), "optimizer": optimizer.state_dict(), "scheduler": scheduler.state_dict(), "epoch": epoch, "metrics": record}
+        _atomic_torch_save(checkpoint, output_dir / "latest.pt")
+        if record["val_total"] < best_val_total:
+            best_val_total = record["val_total"]
+            best_epoch = epoch
+            epochs_without_improvement = 0
+            best_state = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
+            _atomic_torch_save(checkpoint, best_path)
+            improvement = " | best"
+        else:
+            epochs_without_improvement += 1
+            improvement = f" | no improvement {epochs_without_improvement}/{patience}"
+        print(f"Epoch {epoch:03d}/{epochs:03d} | train total={record['train_total']:.4f} hm={record['train_heatmap']:.4f} det={record['train_detection']:.4f} id={record['train_identity']:.4f} acc={record['train_id_accuracy']:.2f}% | val total={record['val_total']:.4f} hm={record['val_heatmap']:.4f} det={record['val_detection']:.4f} id={record['val_identity']:.4f} acc={record['val_id_accuracy']:.2f}% | lr={record['learning_rate']:.2e} time={elapsed:.1f}s")
+        print(f"best_val={best_val_total:.4f} (epoch {best_epoch}){improvement}")
+        print("=" * 120)
+        if epochs_without_improvement >= patience:
+            print(f"Early stopping at epoch {epoch}: validation loss did not improve for {patience} epochs.")
+            break
+    if best_state is None:
+        raise RuntimeError("No epoch completed; no best checkpoint is available.")
+    model.load_state_dict(best_state)
+    _atomic_torch_save(model.state_dict(), output_dir / "model.pt")
+    print(f"Restored best checkpoint from epoch {best_epoch} (val_total={best_val_total:.4f}).")
     return history

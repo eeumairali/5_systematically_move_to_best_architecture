@@ -14,6 +14,8 @@ def build_parser():
     parser = argparse.ArgumentParser(description="Train a CenterNet/FairMOT-inspired JDE model.")
     parser.add_argument("--data-root", type=Path, default=Path("benchmarks/webots_mcid-Small500"))
     parser.add_argument("--epochs", type=int, default=30)
+    parser.add_argument("--patience", type=int, default=5)
+    parser.add_argument("--resume", nargs="?", const=True, default=None, help="Resume from output-dir/latest.pt, or provide a checkpoint path.")
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--learning-rate", type=float, default=1e-4)
     parser.add_argument("--workers", type=int, default=0)
@@ -45,7 +47,7 @@ def main(args=None):
     print(f"Identities: {n_identities} | parameters: {parameters:,} | device: {device}")
     if device.type == "cuda":
         print(f"GPU: {torch.cuda.get_device_name(device)}")
-    fit(model, train_loader, val_loader, device, config.epochs, config.learning_rate, config.output_dir)
+    fit(model, train_loader, val_loader, device, config.epochs, config.learning_rate, config.output_dir, patience=config.patience, resume=config.resume)
 
 
 if __name__ == "__main__":
