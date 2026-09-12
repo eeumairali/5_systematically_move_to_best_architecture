@@ -12,7 +12,7 @@
 # install the CPU-only build of torch/torchvision, since PyPI does not host
 # the CUDA wheels. The --extra-index-url flag above is required for GPU support.
 
-numpy<2  # torch==2.1.2 was compiled against NumPy 1.x; NumPy 2.x breaks its C extensions
+numpy # torch==2.1.2 was compiled against NumPy 1.x; NumPy 2.x breaks its C extensions
 pandas
 streamlit
 matplotlib
